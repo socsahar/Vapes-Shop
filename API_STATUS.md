@@ -52,7 +52,7 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 # Email Configuration  
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
-EMAIL_USER=your_gmail@gmail.com
+GMAIL_USER=your_gmail@gmail.com
 EMAIL_PASSWORD=your_app_password
 
 # Security

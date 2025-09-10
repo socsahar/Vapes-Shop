@@ -41,7 +41,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhY
 # Email Configuration (Gmail SMTP)
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
-EMAIL_USER=sahargen7@gmail.com
+GMAIL_USER=sahargen7@gmail.com
 EMAIL_PASS=kojqyacsnyzyewqx
 EMAIL_PASSWORD=kojqyacsnyzyewqx
 
