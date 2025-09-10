@@ -4,30 +4,33 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables')
+// Only throw error at runtime, not during build
+const checkEnvVars = () => {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing Supabase environment variables')
+  }
 }
 
 // Client for browser/client-side operations
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true
   }
-})
+}) : null
 
 // Admin client for server-side operations (uses service role key)
-export const supabaseAdmin = createClient(
+export const supabaseAdmin = supabaseUrl ? createClient(
   supabaseUrl, 
-  supabaseServiceKey || supabaseAnonKey,
+  supabaseServiceKey || supabaseAnonKey || '',
   {
     auth: {
       autoRefreshToken: false,
       persistSession: false
     }
   }
-)
+) : null
 
 // Helper function to get current user from localStorage (client-side)
 export const getCurrentUser = () => {

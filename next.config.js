@@ -1,13 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  /* config options here */
-  experimental: {
-    turbo: false
-  },
-  devIndicators: {
-    buildActivity: false,
-    buildActivityPosition: 'bottom-right'
-  },
   eslint: {
     // Disable ESLint during builds for production
     ignoreDuringBuilds: true,
@@ -18,7 +10,8 @@ const nextConfig = {
   },
   productionBrowserSourceMaps: false,
   compress: true,
-  poweredByHeader: false
+  poweredByHeader: false,
+  swcMinify: true
 };
 
 export default nextConfig;

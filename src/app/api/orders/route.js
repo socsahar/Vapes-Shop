@@ -4,6 +4,11 @@ import { supabaseAdmin, getCurrentUserFromRequest } from '../../../lib/supabase'
 // GET /api/orders - Get user's orders within group orders
 export async function GET(request) {
     try {
+        // Runtime environment check
+        if (!supabaseAdmin) {
+            return NextResponse.json({ error: 'Database not configured' }, { status: 500 });
+        }
+
         const user = await getCurrentUserFromRequest(request);
         if (!user) {
             return NextResponse.json({ error: 'נדרשת התחברות' }, { status: 401 });
