@@ -1,0 +1,19 @@
+# Railway ignore file - excludes files from deployment
+.env*
+!.env.example
+.DS_Store
+*.log
+node_modules
+.next
+.cache
+.temp
+tmp
+*.tmp
+.git
+.vscode
+*.bat
+*.cjs
+*debug*
+test-*
+*.sqlite
+*.db
