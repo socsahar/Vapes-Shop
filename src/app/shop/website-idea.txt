@@ -1,0 +1,36 @@
+A website for group ordering Vapes.
+
+the shop is closed, when a general order is opening the shop is available.
+an admin is opening a general order with a deadline, when the deadline is reached the general order will be closed automaticlly, the admin can also set a future general order that wil open automaticlly when the time has arrived.
+when the shop is closed users can just watch the products but cant order.
+Email will be sent to the users that a general order has been opened and they can enter and order.
+Users will get in the shop seeing the general order and the deadline.
+users will place theire orders and their orderes will join the general order.
+when a user has placed his order he can not place another order, he can only edit or delete his current order until the general order is closed.
+
+a day before the general order is closing all users will get an email to remind them the order ends in 24 hours.
+
+an hour before the general order is closing all users will get an email to remind them the order ends in 1 hour.
+
+when a general order is closing all users will get an email that the general order has been closed.
+
+when a general order is closed the admins will get an email with two pdf files:
+1. admin_report_<date and time of the order has been closed>.pdf
+2. supplier_report_<date and time of the order has been closed>.pdf
+
+admin report will contain:
+- details about the general order
+- a summry of each user and what he has ordered
+- a summry of the amount each user is needing to pay
+- a summry of the amount of the whole general order
+
+supplier report will contain:
+- deatils about the general orde
+- a summry of all the products and quantity for each products
+- a summry of the amount ot the whole general order
+- a contact for the order (the admin who opened the order)
+
+all of the orders (users and general) will be archived after general order will be closed and the admins could get to it at any time.
+in the archive the admins could press a button to produce manually the pdf files accordingly.
+
+NOTE: the users shouldnt choose which general order to join, at all time only one general order can be opened.

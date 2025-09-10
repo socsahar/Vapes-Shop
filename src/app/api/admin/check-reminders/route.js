@@ -1,0 +1,204 @@
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// GET - Check for reminders and auto-close orders
+export async function GET() {
+  try {
+    console.log('Running general order reminder check...');
+
+    const now = new Date();
+    const results = {
+      checked: 0,
+      reminders_sent: 0,
+      closed_orders: 0,
+      opened_orders: 0,
+      errors: []
+    };
+
+    // Get all general orders that need processing
+    const { data: orders, error: fetchError } = await supabase
+      .from('general_orders')
+      .select('*')
+      .in('status', ['scheduled', 'open']);
+
+    if (fetchError) {
+      console.error('Error fetching orders:', fetchError);
+      return NextResponse.json({ error: 'שגיאה בטעינת הזמנות' }, { status: 500 });
+    }
+
+    results.checked = orders.length;
+
+    for (const order of orders) {
+      try {
+        const deadline = new Date(order.deadline);
+        const openingTime = order.opening_time ? new Date(order.opening_time) : null;
+        
+        // Check if scheduled order should be opened
+        if (order.status === 'scheduled' && openingTime && now >= openingTime) {
+          const { error: updateError } = await supabase
+            .from('general_orders')
+            .update({ status: 'open' })
+            .eq('id', order.id);
+
+          if (!updateError) {
+            results.opened_orders++;
+            
+            // Send opening notification
+            try {
+              await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/email-service`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'general_order_opened',
+                  orderId: order.id,
+                  orderTitle: order.title,
+                  deadline: order.deadline
+                })
+              });
+            } catch (emailError) {
+              console.error('Failed to send opening notification:', emailError);
+              results.errors.push(`Opening email for order ${order.id}: ${emailError.message}`);
+            }
+          }
+          continue;
+        }
+
+        // Skip if order is not open
+        if (order.status !== 'open') continue;
+
+        const timeUntilDeadline = deadline.getTime() - now.getTime();
+        const hoursUntilDeadline = timeUntilDeadline / (1000 * 60 * 60);
+
+        // Auto-close expired orders
+        if (timeUntilDeadline <= 0) {
+          const { error: closeError } = await supabase
+            .from('general_orders')
+            .update({ status: 'closed' })
+            .eq('id', order.id);
+
+          if (!closeError) {
+            results.closed_orders++;
+            
+            // Send closure notification
+            try {
+              await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/email-service`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'general_order_closed',
+                  orderId: order.id,
+                  orderTitle: order.title,
+                  deadline: order.deadline
+                })
+              });
+            } catch (emailError) {
+              console.error('Failed to send closure notification:', emailError);
+              results.errors.push(`Closure email for order ${order.id}: ${emailError.message}`);
+            }
+          }
+          continue;
+        }
+
+        // Send 24-hour reminder (send between 23-24 hours before deadline)
+        if (hoursUntilDeadline <= 24 && hoursUntilDeadline > 23) {
+          try {
+            await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/email-service`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'reminder_24h',
+                orderId: order.id,
+                orderTitle: order.title,
+                deadline: order.deadline
+              })
+            });
+            results.reminders_sent++;
+            console.log(`24h reminder sent for order ${order.id}`);
+          } catch (emailError) {
+            console.error('Failed to send 24h reminder:', emailError);
+            results.errors.push(`24h reminder for order ${order.id}: ${emailError.message}`);
+          }
+        }
+
+        // Send 1-hour reminder (send between 0.5-1 hours before deadline)
+        if (hoursUntilDeadline <= 1 && hoursUntilDeadline > 0.5) {
+          try {
+            await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/email-service`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'reminder_1h',
+                orderId: order.id,
+                orderTitle: order.title,
+                deadline: order.deadline
+              })
+            });
+            results.reminders_sent++;
+            console.log(`1h reminder sent for order ${order.id}`);
+          } catch (emailError) {
+            console.error('Failed to send 1h reminder:', emailError);
+            results.errors.push(`1h reminder for order ${order.id}: ${emailError.message}`);
+          }
+        }
+
+      } catch (orderError) {
+        console.error(`Error processing order ${order.id}:`, orderError);
+        results.errors.push(`Order ${order.id}: ${orderError.message}`);
+      }
+    }
+
+    // Call the database function for additional reminder logic
+    try {
+      const { error: reminderError } = await supabase
+        .rpc('check_general_order_reminders');
+
+      if (reminderError) {
+        console.error('Error in database reminder function:', reminderError);
+        results.errors.push(`Database function: ${reminderError.message}`);
+      }
+    } catch (dbError) {
+      console.error('Database reminder function error:', dbError);
+      results.errors.push(`Database function: ${dbError.message}`);
+    }
+
+    // Process any pending emails
+    try {
+      const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/email-service`, {
+        method: 'GET'
+      });
+      
+      if (emailResponse.ok) {
+        const emailResult = await emailResponse.json();
+        console.log('Email processing result:', emailResult);
+      }
+    } catch (emailError) {
+      console.error('Error processing emails:', emailError);
+      results.errors.push(`Email processing: ${emailError.message}`);
+    }
+
+    console.log('Reminder check completed:', results);
+
+    return NextResponse.json({
+      message: 'בדיקת תזכורות הושלמה בהצלחה',
+      timestamp: new Date().toISOString(),
+      results
+    });
+
+  } catch (error) {
+    console.error('Unexpected error in reminder check:', error);
+    return NextResponse.json(
+      { error: 'שגיאה בבדיקת תזכורות' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST - Manual trigger for reminder check (admin only)
+export async function POST() {
+  return GET(); // Same logic as GET
+}

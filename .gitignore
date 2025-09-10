@@ -19,6 +19,7 @@
 
 # production
 /build
+/dist
 
 # misc
 .DS_Store
@@ -32,6 +33,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -39,3 +41,87 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Production Security
+config.json
+secrets.json
+keys/
+certificates/
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Database backups and exports
+*.sql
+!database/schema.sql
+!database/supabase_schema.sql
+!database/general_order_system.sql
+*.dump
+*.backup
+
+# Railway specific
+railway-*
+.railway/
+
+# Logs and runtime
+logs/
+*.log
+.temp/
+tmp/
+temp/
+
+# IDE and editor files
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Cache directories
+.cache/
+.parcel-cache/
+.next/cache/
+
+# Email attachments and uploads
+uploads/
+temp-files/
+email-attachments/
+pdf-reports/
+
+# Development tools
+.eslintcache
+.stylelintcache
+.prettiercache
+
+# Development and Testing Files
+*.bat
+*debug*.js
+test-*.js
+test-*.cjs
+quick_debug.*
+check_structure.js
+fix-*.js
+inspect-*.js
+manual-*.cjs
+*_test.*
+test_*.sql
+dev-server.mjs
+
+# Documentation Files (keep in production)
+!README.md
+!DEPLOYMENT.md
+!PRODUCTION_CHECKLIST.md
+!API_STATUS.md
+!INSTALLATION_GUIDE.md
+
+# Package manager lock files (uncomment if needed)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
