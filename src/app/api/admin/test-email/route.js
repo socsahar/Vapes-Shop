@@ -17,8 +17,8 @@ export async function POST(request) {
     const transporter = nodemailer.createTransporter({
       service: 'gmail',
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
       },
     });
 
@@ -27,7 +27,7 @@ export async function POST(request) {
 
     // Send test email
     const mailOptions = {
-      from: process.env.EMAIL_USER,
+      from: process.env.GMAIL_USER,
       to: testEmail,
       subject: 'בדיקת מערכת אימייל - Vape Shop',
       html: `
@@ -46,7 +46,7 @@ export async function POST(request) {
         </p>
         <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
         <p style="margin: 0; color: #333;"><strong>🖥️ שרת SMTP:</strong> Gmail (smtp.gmail.com)</p>
-        <p style="margin: 10px 0 0 0; color: #333;"><strong>📧 כתובת שולח:</strong> ${process.env.EMAIL_USER}</p>
+        <p style="margin: 10px 0 0 0; color: #333;"><strong>📧 כתובת שולח:</strong> ${process.env.GMAIL_USER}</p>
         <p style="margin: 10px 0 0 0; color: #333;"><strong>🔐 אבטחה:</strong> App Password</p>
         <p style="margin: 10px 0 0 0; color: #333;"><strong>⏰ זמן שליחה:</strong> ${new Date().toLocaleString('he-IL')}</p>
         </div>
@@ -70,7 +70,7 @@ export async function POST(request) {
         host: 'smtp.gmail.com',
         port: 587,
         secure: false,
-        from: process.env.EMAIL_USER
+        from: process.env.GMAIL_USER
       }
     });
 
@@ -105,7 +105,7 @@ export async function GET() {
       host: 'smtp.gmail.com',
       port: 587,
       secure: false,
-      user: process.env.EMAIL_USER ? process.env.EMAIL_USER.replace(/(.{3}).*(@.*)/, '$1***$2') : 'לא הוגדר',
+      user: process.env.GMAIL_USER ? process.env.GMAIL_USER.replace(/(.{3}).*(@.*)/, '$1***$2') : 'לא הוגדר',
       passwordSet: !!process.env.EMAIL_PASS
     },
     status: 'מוכן לשליחה',

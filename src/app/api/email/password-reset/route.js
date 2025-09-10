@@ -16,8 +16,8 @@ export async function POST(request) {
         const transporter = nodemailer.createTransporter({
             service: 'gmail', // or your email service
             auth: {
-                user: process.env.EMAIL_USER, // Your email
-                pass: process.env.EMAIL_PASSWORD, // Your email password or app password
+                user: process.env.GMAIL_USER, // Your email
+                pass: process.env.GMAIL_APP_PASSWORD, // Your email password or app password
             },
         });
 
@@ -171,7 +171,7 @@ export async function POST(request) {
 
         // Send email
         const mailOptions = {
-            from: `"הוייפ שופ" <${process.env.EMAIL_USER}>`,
+            from: `"הוייפ שופ" <${process.env.GMAIL_USER}>`,
             to: email,
             subject: '🔑 איפוס סיסמה - הוייפ שופ',
             html: htmlTemplate,
