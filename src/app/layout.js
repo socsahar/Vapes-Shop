@@ -73,6 +73,21 @@ export default function RootLayout({ children }) {
             <div className="relative z-10">
               {children}
             </div>
+            
+            {/* Footer */}
+            <footer className="developer-footer">
+              <div className="developer-footer-content">
+                <div className="developer-credit">
+                  <div className="developer-info">
+                    <span className="developer-title">פיתוח, עיצוב ובניית המערכת:</span>
+                    <span className="developer-name">סהר מלול</span>
+                  </div>
+                  <div className="copyright">
+                    <span>© {new Date().getFullYear()} כל הזכויות שמורות</span>
+                  </div>
+                </div>
+              </div>
+            </footer>
           </div>
         </ToastProvider>
       </body>
