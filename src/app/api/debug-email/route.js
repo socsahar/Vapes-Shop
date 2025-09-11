@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
-const nodemailer = require('nodemailer');
+
+// Use dynamic import for nodemailer compatibility
+async function getNodemailer() {
+    const nodemailer = await import('nodemailer');
+    return nodemailer.default;
+}
 
 export async function GET() {
     try {
@@ -16,6 +21,7 @@ export async function GET() {
         console.log('Environment Variables:', emailConfig);
 
         // Test SMTP connection
+        const nodemailer = await getNodemailer();
         const testResults = [];
 
         // Test configuration 1: Standard Gmail

@@ -1,7 +1,20 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import crypto from 'crypto';
-const nodemailer = require('nodemailer');
+
+// Use dynamic import for nodemailer to avoid bundling issues
+async function createEmailTransporter() {
+    const nodemailer = await import('nodemailer');
+    return nodemailer.default.createTransporter({
+        service: 'gmail',
+        auth: {
+            user: process.env.GMAIL_USER,
+            pass: process.env.GMAIL_APP_PASSWORD,
+        },
+        timeout: 30000,
+        secure: false
+    });
+}
 
 export async function POST(request) {
     try {
@@ -60,23 +73,12 @@ export async function POST(request) {
             );
         }
 
-        // Send password reset email with simplified SMTP configuration
+        // Send password reset email with dynamic import for compatibility
         try {
             console.log('Configuring SMTP transporter...');
             
-            // Simplified SMTP configuration for production reliability
-            const smtpConfig = {
-                service: 'gmail',
-                auth: {
-                    user: process.env.GMAIL_USER,
-                    pass: process.env.GMAIL_APP_PASSWORD,
-                },
-                timeout: 30000,
-                secure: false
-            };
-
             console.log('Creating nodemailer transporter...');
-            const transporter = nodemailer.createTransporter(smtpConfig);
+            const transporter = await createEmailTransporter();
             
             console.log('SMTP transporter created successfully');
 

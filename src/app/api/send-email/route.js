@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
-const nodemailer = require('nodemailer');
+
+// Use dynamic import for nodemailer compatibility
+async function getNodemailer() {
+    const nodemailer = await import('nodemailer');
+    return nodemailer.default;
+}
 
 export async function POST(request) {
     try {
@@ -52,6 +57,7 @@ export async function POST(request) {
             }
         ];
 
+        const nodemailer = await getNodemailer();
         let lastError;
         
         for (const emailConfig of emailConfigs) {

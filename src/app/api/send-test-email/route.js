@@ -1,5 +1,10 @@
-const nodemailer = require('nodemailer');
 import { NextResponse } from 'next/server';
+
+// Use dynamic import for nodemailer compatibility
+async function getNodemailer() {
+    const nodemailer = await import('nodemailer');
+    return nodemailer.default;
+}
 
 export async function POST(request) {
     try {
@@ -19,6 +24,7 @@ export async function POST(request) {
 
         // Create transporter with minimal configuration
         console.log('Creating transporter...');
+        const nodemailer = await getNodemailer();
         const transporter = nodemailer.createTransporter({
             service: 'gmail',
             auth: {
