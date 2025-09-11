@@ -533,12 +533,6 @@ function generateWelcomeEmailTemplate(user) {
                         <li>הצטרף להזמנות הקבוצתיות שלנו לחיסכון</li>
                     </ul>
                 </div>
-
-                <div style="background: #f0fff4; border: 1px solid #9ae6b4; border-radius: 8px; padding: 20px; margin: 25px 0; text-align: center;">
-                    <h4 style="color: #2f855a; margin-top: 0;">🎁 הנחה מיוחדת ללקוחות חדשים!</h4>
-                    <p style="color: #2f855a; font-size: 16px; margin: 10px 0;">השתמש בקוד <strong style="background: #68d391; color: white; padding: 5px 10px; border-radius: 5px;">WELCOME10</strong> וקבל 10% הנחה על הרכישה הראשונה שלך!</p>
-                    <p style="color: #2f855a; font-size: 14px; margin: 5px 0;"><em>*בתוקף על הזמנות מעל ₪100</em></p>
-                </div>
             </div>
 
             <div class="footer">
