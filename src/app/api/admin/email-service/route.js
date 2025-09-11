@@ -7,6 +7,47 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// Multi-provider email sending function
+async function sendEmailWithProviders(mailOptions) {
+    // Try Resend API first (primary service)
+    if (process.env.RESEND_API_KEY) {
+        try {
+            console.log('Trying Resend API for admin email...');
+            
+            const resendResponse = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    from: 'noreply@vapes-shop.top',
+                    to: Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to],
+                    subject: mailOptions.subject,
+                    html: mailOptions.html
+                })
+            });
+
+            if (resendResponse.ok) {
+                const resendData = await resendResponse.json();
+                console.log('✅ Resend API email sent successfully!');
+                return { success: true, messageId: resendData.id, service: 'Resend API' };
+            } else {
+                const resendError = await resendResponse.json();
+                console.log('❌ Resend API failed:', resendError);
+                throw new Error(`Resend API failed: ${resendError.message || 'Unknown error'}`);
+            }
+        } catch (resendError) {
+            console.log('Resend API failed, trying Gmail SMTP fallback...', resendError.message);
+        }
+    }
+
+    // Fallback to Gmail SMTP
+    console.log('Using Gmail SMTP fallback...');
+    await transporter.sendMail(mailOptions);
+    return { success: true, service: 'Gmail SMTP' };
+}
+
 // Create email transporter with updated Gmail credentials
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -20,7 +61,7 @@ const transporter = nodemailer.createTransport({
 });
 
 // Custom sender name and email
-const SENDER_EMAIL = `"Vapes-Shop" <${process.env.GMAIL_USER}>`;
+const SENDER_EMAIL = `"Vapes-Shop" <noreply@vapes-shop.top>`; // Use verified domain
 
 // GET - Process pending emails
 export async function GET() {
@@ -100,7 +141,8 @@ async function processEmail(emailLog) {
     html: emailLog.body
   };
 
-  await transporter.sendMail(mailOptions);
+  const emailResult = await sendEmailWithProviders(mailOptions);
+  console.log(`Email sent via ${emailResult.service} to ${emailLog.recipient_email}`);
 
   // Mark as sent
   await supabase
@@ -317,8 +359,8 @@ async function processOrderConfirmation(emailLog) {
     html: htmlBody
   };
 
-  await transporter.sendMail(mailOptions);
-  console.log(`Order confirmation email sent to ${recipient_email} for order ${participant.id}`);
+  const emailResult = await sendEmailWithProviders(mailOptions);
+  console.log(`Order confirmation email sent via ${emailResult.service} to ${recipient_email} for order ${participant.id}`);
 }
 
 async function sendOrderOpenedNotifications(body) {

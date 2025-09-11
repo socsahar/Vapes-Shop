@@ -1,17 +1,50 @@
 import { NextResponse } from 'next/server';
 
-// Function to send email via Gmail SMTP
-async function sendEmailViaHTTP(emailData) {
+// Function to send email via multiple providers
+async function sendEmailViaMultipleProviders(emailData) {
     try {
-        // Try Gmail SMTP first if configured
+        // Try Resend API first (primary service)
+        if (process.env.RESEND_API_KEY) {
+            console.log('Trying Resend API...');
+            
+            const resendResponse = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    from: 'noreply@vapes-shop.top',
+                    to: [emailData.to],
+                    subject: emailData.subject,
+                    html: emailData.html
+                })
+            });
+
+            if (resendResponse.ok) {
+                const resendData = await resendResponse.json();
+                console.log('✅ Resend email sent successfully!');
+                return { 
+                    success: true, 
+                    messageId: resendData.id,
+                    service: 'Resend API'
+                };
+            } else {
+                const resendError = await resendResponse.json();
+                console.log('❌ Resend API failed:', resendError);
+                throw new Error(`Resend API failed: ${resendError.message || 'Unknown error'}`);
+            }
+        }
+        
+        // Try Gmail SMTP as fallback if Resend fails
         if (process.env.GMAIL_USER && (process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASS)) {
-            console.log('Attempting Gmail SMTP send...');
+            console.log('Trying Gmail SMTP fallback...');
             
             // Use dynamic import for nodemailer to handle ES module compatibility
             const nodemailer = await import('nodemailer');
-            const createTransporter = nodemailer.default?.createTransporter || nodemailer.createTransporter;
+            const nodemailerModule = nodemailer.default || nodemailer;
             
-            const transporter = createTransporter({
+            const transporter = nodemailerModule.createTransporter({
                 host: process.env.EMAIL_HOST || 'smtp.gmail.com',
                 port: parseInt(process.env.EMAIL_PORT || '587'),
                 secure: false,
@@ -38,17 +71,10 @@ async function sendEmailViaHTTP(emailData) {
             };
         }
         
-        // For now, return an error to use fallback if no Gmail config
-        // In a real implementation, you'd integrate with a service like:
-        // - Resend API
-        // - SendGrid API  
-        // - Mailgun API
-        // - EmailJS
-        
-        throw new Error('No email service configured - using fallback');
+        throw new Error('No email service configured');
         
     } catch (error) {
-        console.log('Email sending failed:', error.message);
+        console.log('All email services failed:', error.message);
         return { success: false, error: error.message };
     }
 }
