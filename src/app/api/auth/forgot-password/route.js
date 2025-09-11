@@ -143,6 +143,9 @@ export async function POST(request) {
                 if (process.env.RESEND_API_KEY) {
                     // Use Resend API
                     console.log('Trying Resend API...');
+                    console.log('Resend API Key available:', !!process.env.RESEND_API_KEY);
+                    console.log('API Key starts with:', process.env.RESEND_API_KEY?.substring(0, 3));
+                    
                     const resendResponse = await fetch('https://api.resend.com/emails', {
                         method: 'POST',
                         headers: {
@@ -150,23 +153,29 @@ export async function POST(request) {
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({
-                            from: 'noreply@vapes-shop.top',
+                            from: 'onboarding@resend.dev', // Use Resend's default from address
                             to: [user.email],
                             subject: '🔑 איפוס סיסמה - הוייפ שופ',
                             html: htmlTemplate
                         })
                     });
 
+                    console.log('Resend API Response Status:', resendResponse.status);
+                    const resendData = await resendResponse.json();
+                    console.log('Resend API Response Data:', resendData);
+
                     if (resendResponse.ok) {
-                        const resendData = await resendResponse.json();
+                        console.log('✅ Resend email sent successfully!');
+                        console.log('Email ID:', resendData.id);
+                        
                         emailResult = {
                             success: true,
                             messageId: resendData.id,
                             details: { service: 'Resend API' }
                         };
                     } else {
-                        console.log('Resend API failed, trying next service...');
-                        throw new Error('Resend API failed');
+                        console.log('❌ Resend API failed with response:', resendData);
+                        throw new Error(`Resend API failed: ${resendData.message || 'Unknown error'}`);
                     }
                 } else if (process.env.SMTP2GO_API_KEY) {
                     // Use SMTP2GO API
@@ -196,67 +205,60 @@ export async function POST(request) {
                         console.log('SMTP2GO API failed, trying next service...');
                         throw new Error('SMTP2GO API failed');
                     }
-                } else if (process.env.GMAIL_USER && process.env.EMAIL_PASS) {
-                    // Use Gmail SMTP as fallback
-                    console.log('Trying Gmail SMTP...');
-                    const nodemailer = require('nodemailer');
-                    
-                    const transporter = nodemailer.createTransporter({
-                        host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-                        port: parseInt(process.env.EMAIL_PORT || '587'),
-                        secure: false,
-                        auth: {
-                            user: process.env.GMAIL_USER,
-                            pass: process.env.EMAIL_PASS
-                        },
-                        tls: {
-                            rejectUnauthorized: false
-                        }
-                    });
-
-                    const info = await transporter.sendMail({
-                        from: `"הוייפ שופ" <${process.env.GMAIL_USER}>`,
-                        to: [user.email],
-                        subject: '🔑 איפוס סיסמה - הוייפ שופ',
-                        html: htmlTemplate
-                    });
-
-                    emailResult = {
-                        success: true,
-                        messageId: info.messageId,
-                        details: { service: 'Gmail SMTP' }
-                    };
                 } else if (process.env.GMAIL_USER && (process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD)) {
                     // Use Gmail SMTP as fallback
                     console.log('Trying Gmail SMTP...');
+                    console.log('Gmail User:', process.env.GMAIL_USER);
+                    console.log('Gmail Password available:', !!(process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASS));
+                    console.log('Gmail Password value (first 4 chars):', (process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASS)?.substring(0, 4));
                     
                     // Use dynamic import for nodemailer to handle ES module compatibility
                     const nodemailer = await import('nodemailer');
-                    const createTransporter = nodemailer.default?.createTransporter || nodemailer.createTransporter;
+                    console.log('Nodemailer imported:', !!nodemailer);
+                    console.log('Nodemailer default:', !!nodemailer.default);
                     
-                    const transporter = createTransporter({
-                        host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-                        port: parseInt(process.env.EMAIL_PORT || '587'),
-                        secure: false,
+                    // Clean up password - remove any spaces
+                    const gmailPassword = (process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASS)?.replace(/\s/g, '');
+                    console.log('Cleaned password length:', gmailPassword?.length);
+                    
+                    // The default export IS nodemailer itself
+                    const nodemailerModule = nodemailer.default || nodemailer;
+                    const transporter = nodemailerModule.createTransporter({
+                        service: 'gmail', // Use service shorthand first
                         auth: {
                             user: process.env.GMAIL_USER,
-                            pass: process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASS
+                            pass: gmailPassword
                         },
                         tls: {
                             rejectUnauthorized: false
                         }
                     });
 
-                    const info = await transporter.sendMail({
+                    console.log('Transporter created, verifying connection...');
+                    
+                    // Verify SMTP connection first
+                    try {
+                        await transporter.verify();
+                        console.log('✅ SMTP connection verified successfully!');
+                    } catch (verifyError) {
+                        console.error('❌ SMTP verification failed:', verifyError.message);
+                        throw new Error(`SMTP connection failed: ${verifyError.message}`);
+                    }
+                    
+                    console.log('Attempting to send password reset email...');
+                    const gmailInfo = await transporter.sendMail({
                         from: `"הוייפ שופ" <${process.env.GMAIL_USER}>`,
                         to: [user.email],
                         subject: '🔑 איפוס סיסמה - הוייפ שופ',
                         html: htmlTemplate
                     });
 
+                    console.log('✅ Gmail SMTP email sent successfully!');
+                    console.log('Message ID:', gmailInfo.messageId);
+
                     emailResult = {
                         success: true,
-                        messageId: info.messageId,
+                        messageId: gmailInfo.messageId,
                         details: { service: 'Gmail SMTP' }
                     };
                 } else {

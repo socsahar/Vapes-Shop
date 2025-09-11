@@ -65,6 +65,9 @@ export async function POST(request) {
             if (process.env.RESEND_API_KEY) {
                 // Use Resend API
                 console.log('Trying Resend API...');
+                console.log('Resend API Key available:', !!process.env.RESEND_API_KEY);
+                console.log('API Key starts with:', process.env.RESEND_API_KEY?.substring(0, 3));
+                
                 const resendResponse = await fetch('https://api.resend.com/emails', {
                     method: 'POST',
                     headers: {
@@ -72,23 +75,29 @@ export async function POST(request) {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        from: 'noreply@vapes-shop.top',
+                        from: 'onboarding@resend.dev', // Use Resend's default from address
                         to: [email],
                         subject: subject,
                         html: htmlTemplate
                     })
                 });
 
+                console.log('Resend API Response Status:', resendResponse.status);
+                const resendData = await resendResponse.json();
+                console.log('Resend API Response Data:', resendData);
+
                 if (resendResponse.ok) {
-                    const resendData = await resendResponse.json();
+                    console.log('✅ Resend email sent successfully!');
+                    console.log('Email ID:', resendData.id);
+                    
                     emailResult = {
                         success: true,
                         messageId: resendData.id,
                         details: { service: 'Resend API' }
                     };
                 } else {
-                    console.log('Resend API failed, trying next service...');
-                    throw new Error('Resend API failed');
+                    console.log('❌ Resend API failed with response:', resendData);
+                    throw new Error(`Resend API failed: ${resendData.message || 'Unknown error'}`);
                 }
             } else if (process.env.SMTP2GO_API_KEY) {
                 // Use SMTP2GO API
@@ -133,9 +142,12 @@ export async function POST(request) {
                 
                 // Use dynamic import for nodemailer to handle ES module compatibility
                 const nodemailer = await import('nodemailer');
-                const createTransporter = nodemailer.default?.createTransporter || nodemailer.createTransporter;
+                console.log('Nodemailer imported:', !!nodemailer);
+                console.log('Nodemailer default:', !!nodemailer.default);
                 
-                const transporter = createTransporter({
+                // The default export IS nodemailer itself
+                const nodemailerModule = nodemailer.default || nodemailer;
+                const transporter = nodemailerModule.createTransporter({
                     service: 'gmail', // Use service shorthand first
                     auth: {
                         user: process.env.GMAIL_USER,
