@@ -30,6 +30,15 @@ export async function GET(request) {
             console.error('Error counting orders:', ordersError);
         }
 
+        // Get general orders count
+        const { count: generalOrdersCount, error: generalOrdersError } = await supabaseAdmin
+            .from('general_orders')
+            .select('*', { count: 'exact', head: true });
+
+        if (generalOrdersError) {
+            console.error('Error counting general orders:', generalOrdersError);
+        }
+
         // Calculate total revenue
         const { data: orders, error: revenueError } = await supabaseAdmin
             .from('orders')
@@ -45,6 +54,7 @@ export async function GET(request) {
             users: usersCount || 0,
             products: productsCount || 0,
             orders: ordersCount || 0,
+            generalOrders: generalOrdersCount || 0,
             revenue: totalRevenue
         });
 
@@ -55,6 +65,7 @@ export async function GET(request) {
                 users: 0,
                 products: 0,
                 orders: 0,
+                generalOrders: 0,
                 revenue: 0,
                 error: 'Failed to fetch stats'
             },

@@ -1,4 +1,5 @@
 import './styles.css'
+import './globals.css'
 import { ToastProvider } from '../components/Toast'
 
 export const metadata = {

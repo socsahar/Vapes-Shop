@@ -30,6 +30,7 @@ export default function AdminPage() {
         users: 0,
         products: 0,
         orders: 0,
+        generalOrders: 0,
         revenue: 0
     });
     const [products, setProducts] = useState([]);
@@ -50,6 +51,8 @@ export default function AdminPage() {
     const [ordersLoading, setOrdersLoading] = useState(false);
     const [recentActivity, setRecentActivity] = useState([]);
     const [activityLoading, setActivityLoading] = useState(false);
+    const [activitySilentRefresh, setActivitySilentRefresh] = useState(false);
+    const [lastRefresh, setLastRefresh] = useState(null);
     const [generalOrders, setGeneralOrders] = useState([]);
     const [generalOrdersLoading, setGeneralOrdersLoading] = useState(false);
     const [allOrders, setAllOrders] = useState([]);
@@ -119,18 +122,56 @@ export default function AdminPage() {
         }
     };
 
-    const fetchRecentActivity = async () => {
+    const fetchRecentActivity = async (showLoader = true) => {
         try {
-            setActivityLoading(true);
+            // Prevent any scroll behavior during refresh
+            const currentScrollTop = window.scrollY || document.documentElement.scrollTop;
+            
+            if (showLoader) {
+                setActivityLoading(true);
+            } else {
+                setActivitySilentRefresh(true);
+            }
+            
             const response = await fetch('/api/admin/activity');
+            console.log('Activity API response status:', response.status);
             if (response.ok) {
                 const data = await response.json();
-                setRecentActivity(data.activities || []);
+                console.log('Activity API response data:', data);
+                
+                // Add a small delay for smoother transition only for manual refresh
+                if (showLoader) {
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                }
+                
+                setRecentActivity(data.activities || data || []);
+                setLastRefresh(new Date().toLocaleTimeString('he-IL'));
+                
+                // Maintain scroll position after refresh
+                window.scrollTo(0, currentScrollTop);
+            } else {
+                console.error('Activity API error:', response.status, response.statusText);
+                setRecentActivity([{
+                    type: 'system',
+                    description: 'שגיאה בטעינת פעילות אחרונה',
+                    time: 'כעת',
+                    status: 'error'
+                }]);
             }
         } catch (error) {
             console.error('Error fetching activity:', error);
+            setRecentActivity([{
+                type: 'system',
+                description: 'שגיאה בחיבור לשרת',
+                time: 'כעת',
+                status: 'error'
+            }]);
         } finally {
-            setActivityLoading(false);
+            if (showLoader) {
+                setActivityLoading(false);
+            } else {
+                setActivitySilentRefresh(false);
+            }
         }
     };
 
@@ -873,13 +914,30 @@ export default function AdminPage() {
         });
     };
 
-    // Fetch data when tab changes
+    // Auto-refresh only for Recent Activity section
+    useEffect(() => {
+        let interval;
+        if (activeTab === 'dashboard') {
+            // Set up auto-refresh every 30 seconds without showing loader
+            interval = setInterval(() => {
+                fetchRecentActivity(false); // Silent refresh
+            }, 30000);
+        }
+        
+        return () => {
+            if (interval) {
+                clearInterval(interval);
+            }
+        };
+    }, [activeTab]);
+
+    // Fetch data when tab changes (initial load only)
     useEffect(() => {
         if (activeTab === 'users') {
             fetchUsers();
         } else if (activeTab === 'dashboard') {
             fetchStats();
-            fetchRecentActivity();
+            fetchRecentActivity(true); // Initial load with spinner
         } else if (activeTab === 'products') {
             fetchProducts();
         } else if (activeTab === 'orders') {
@@ -1003,6 +1061,13 @@ export default function AdminPage() {
                                         <div className="admin-stat-label">הזמנות</div>
                                     </div>
                                 </div>
+                                <div className="admin-stat-card general-orders">
+                                    <div className="admin-stat-icon">👥🛒</div>
+                                    <div className="admin-stat-content">
+                                        <div className="admin-stat-number">{stats.generalOrders}</div>
+                                        <div className="admin-stat-label">הזמנות קבוצתיות</div>
+                                    </div>
+                                </div>
                                 <div className="admin-stat-card revenue">
                                     <div className="admin-stat-icon">💰</div>
                                     <div className="admin-stat-content">
@@ -1015,41 +1080,88 @@ export default function AdminPage() {
                             {/* Recent Activity */}
                             <div className="admin-section">
                                 <div className="admin-section-header">
-                                    <h3 className="admin-section-title">פעילות אחרונה</h3>
+                                    <div className="flex items-center justify-between w-full">
+                                        <h3 className="admin-section-title">פעילות אחרונה</h3>
+                                        <div className="activity-controls">
+                                            {lastRefresh && (
+                                                <span className="text-xs text-gray-500">
+                                                    עודכן: {lastRefresh}
+                                                </span>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    fetchRecentActivity(true);
+                                                }}
+                                                disabled={activityLoading}
+                                                className="activity-refresh-btn"
+                                                title="רענן כעת"
+                                            >
+                                                {activityLoading ? '⏳ מרענן...' : '🔄 רענן'}
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                                 {activityLoading ? (
-                                    <div className="admin-loading">
+                                    <div className="activity-loading">
                                         <div className="loading-spinner"></div>
-                                        <p>טוען נתונים...</p>
+                                        <p>טוען פעילות אחרונה...</p>
                                     </div>
                                 ) : recentActivity && recentActivity.length > 0 ? (
-                                    <div className="activity-feed">
-                                        {recentActivity.map((activity, index) => (
-                                            <div key={index} className="activity-item">
-                                                <div className="activity-icon">
-                                                    {activity.type === 'order' && '📋'}
-                                                    {activity.type === 'user' && '👤'}
-                                                    {activity.type === 'product' && '📦'}
-                                                    {activity.type === 'password_reset' && '🔑'}
-                                                    {activity.type === 'user_update' && '✏️'}
+                                    <div>
+                                        <div className={`activity-feed ${activitySilentRefresh ? 'silent-refreshing' : ''}`}>
+                                            {recentActivity.map((activity, index) => (
+                                                <div key={`${activity.type}-${index}`} className="activity-item">
+                                                    <div className="activity-icon">
+                                                        {activity.type === 'order' && '📋'}
+                                                        {activity.type === 'user' && '👤'}
+                                                        {activity.type === 'product' && '📦'}
+                                                        {activity.type === 'password_reset' && '🔑'}
+                                                        {activity.type === 'user_update' && '✏️'}
+                                                        {activity.type === 'system' && '⚙️'}
+                                                    </div>
+                                                    <div className="activity-content">
+                                                        <p className="activity-description">{activity.description}</p>
+                                                        <p className="activity-time">{activity.time}</p>
+                                                    </div>
+                                                    <div className={`activity-status ${activity.status || ''}`}>
+                                                        {activity.status === 'new' && 'חדש'}
+                                                        {activity.status === 'pending' && 'ממתין'}
+                                                        {activity.status === 'completed' && 'הושלם'}
+                                                        {activity.status === 'error' && 'שגיאה'}
+                                                    </div>
                                                 </div>
-                                                <div className="activity-content">
-                                                    <p className="activity-description">{activity.description}</p>
-                                                    <p className="activity-time">{activity.time}</p>
-                                                </div>
-                                                <div className={`activity-status ${activity.status || ''}`}>
-                                                    {activity.status === 'new' && 'חדש'}
-                                                    {activity.status === 'pending' && 'ממתין'}
-                                                    {activity.status === 'completed' && 'הושלם'}
-                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="activity-status-footer">
+                                            <div className="activity-status-info">
+                                                <span>
+                                                    🔄 רענון אוטומטי כל 30 שניות 
+                                                    {activitySilentRefresh && <span className="silent-refresh-indicator">• מתעדכן...</span>}
+                                                </span>
+                                                <span>עדכון אחרון: {lastRefresh || 'טרם עודכן'} | סה&quot;כ: {recentActivity.length}</span>
                                             </div>
-                                        ))}
+                                        </div>
                                     </div>
                                 ) : (
                                     <div className="admin-empty-state">
                                         <div className="admin-empty-icon">📊</div>
                                         <p className="admin-empty-text">אין פעילות אחרונה</p>
                                         <p className="admin-empty-subtext">כאשר תהיה פעילות במערכת, היא תוצג כאן</p>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                fetchRecentActivity(true);
+                                            }}
+                                            disabled={activityLoading}
+                                            className="admin-btn-primary mt-3"
+                                        >
+                                            {activityLoading ? 'טוען...' : 'רענן נתונים'}
+                                        </button>
                                     </div>
                                 )}
                             </div>

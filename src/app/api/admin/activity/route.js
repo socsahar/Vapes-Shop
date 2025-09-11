@@ -8,6 +8,7 @@ const supabase = createClient(
 
 export async function GET() {
   try {
+    console.log('=== Activity API Called ===');
     const activities = [];
 
     // Get recent orders
@@ -17,13 +18,15 @@ export async function GET() {
       .order('created_at', { ascending: false })
       .limit(5);
 
+    console.log('Orders query result:', { orders, ordersError });
+
     if (ordersError) {
       console.error('Error fetching orders:', ordersError);
-    } else if (orders) {
+    } else if (orders && orders.length > 0) {
       orders.forEach(order => {
         activities.push({
           type: 'order',
-          description: `הזמנה חדשה מ-${order.users?.full_name || 'משתמש'} בסך ₪${order.total_amount}`,
+          description: `הזמנה חדשה מ-${order.users?.full_name || 'משתמש'} בסך ₪${order.total_amount || 0}`,
           time: formatRelativeTime(order.created_at),
           status: order.status === 'pending' ? 'new' : order.status === 'processing' ? 'pending' : 'completed'
         });
@@ -37,13 +40,15 @@ export async function GET() {
       .order('created_at', { ascending: false })
       .limit(3);
 
+    console.log('Users query result:', { users, usersError });
+
     if (usersError) {
       console.error('Error fetching users:', usersError);
-    } else if (users) {
+    } else if (users && users.length > 0) {
       users.forEach(user => {
         activities.push({
           type: 'user',
-          description: `משתמש חדש נרשם: ${user.full_name}`,
+          description: `משתמש חדש נרשם: ${user.full_name || 'משתמש'}`,
           time: formatRelativeTime(user.created_at),
           status: 'new'
         });
@@ -57,9 +62,11 @@ export async function GET() {
       .order('updated_at', { ascending: false })
       .limit(3);
 
+    console.log('Products query result:', { products, productsError });
+
     if (productsError) {
       console.error('Error fetching products:', productsError);
-    } else if (products) {
+    } else if (products && products.length > 0) {
       products.forEach(product => {
         const isNew = new Date(product.created_at).getTime() === new Date(product.updated_at).getTime();
         activities.push({
@@ -71,6 +78,8 @@ export async function GET() {
       });
     }
 
+    console.log('Final activities:', activities);
+
     // Sort all activities by time (most recent first)
     activities.sort((a, b) => {
       // Convert relative time back to timestamp for sorting
@@ -80,7 +89,9 @@ export async function GET() {
     });
 
     // Return the 10 most recent activities
-    return NextResponse.json(activities.slice(0, 10));
+    const result = { activities: activities.slice(0, 10) };
+    console.log('Returning activities:', result);
+    return NextResponse.json(result);
 
   } catch (error) {
     console.error('Error fetching activity:', error);
