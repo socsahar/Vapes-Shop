@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+const nodemailer = require('nodemailer');
 
 export async function GET() {
     try {
@@ -15,8 +16,6 @@ export async function GET() {
         console.log('Environment Variables:', emailConfig);
 
         // Test SMTP connection
-        const nodemailer = require('nodemailer');
-        
         const testResults = [];
 
         // Test configuration 1: Standard Gmail

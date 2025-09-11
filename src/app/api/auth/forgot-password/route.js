@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import crypto from 'crypto';
-import nodemailer from 'nodemailer';
+const nodemailer = require('nodemailer');
 
 export async function POST(request) {
     try {
@@ -60,70 +60,25 @@ export async function POST(request) {
             );
         }
 
-        // Send password reset email with enhanced SMTP configuration
+        // Send password reset email with simplified SMTP configuration
         try {
             console.log('Configuring SMTP transporter...');
             
-            // Enhanced SMTP configuration for production
-            const transporterConfig = {
-                host: 'smtp.gmail.com',
-                port: 587,
-                secure: false, // true for 465, false for other ports
-                auth: {
-                    user: process.env.GMAIL_USER,
-                    pass: process.env.GMAIL_APP_PASSWORD,
-                },
-                tls: {
-                    rejectUnauthorized: false
-                },
-                connectionTimeout: 60000, // 60 seconds
-                greetingTimeout: 30000,   // 30 seconds
-                socketTimeout: 60000,     // 60 seconds
-                logger: false,
-                debug: false
-            };
-
-            // Fallback configuration if primary fails
-            const fallbackConfig = {
+            // Simplified SMTP configuration for production reliability
+            const smtpConfig = {
                 service: 'gmail',
                 auth: {
                     user: process.env.GMAIL_USER,
                     pass: process.env.GMAIL_APP_PASSWORD,
                 },
-                connectionTimeout: 30000,
-                socketTimeout: 30000,
-                logger: false,
-                debug: false
+                timeout: 30000,
+                secure: false
             };
 
-            let transporter;
-            let transporterUsed = 'primary';
-
-            try {
-                console.log('Trying primary SMTP configuration...');
-                transporter = nodemailer.createTransporter(transporterConfig);
-                
-                // Quick connection test with timeout
-                await Promise.race([
-                    transporter.verify(),
-                    new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('SMTP verification timeout')), 10000)
-                    )
-                ]);
-                console.log('Primary SMTP configuration successful');
-            } catch (primaryError) {
-                console.log('Primary SMTP failed, trying fallback configuration...');
-                console.log('Primary error:', primaryError.message);
-                
-                try {
-                    transporter = nodemailer.createTransporter(fallbackConfig);
-                    transporterUsed = 'fallback';
-                    console.log('Fallback SMTP configuration ready (skipping verification)');
-                } catch (fallbackError) {
-                    console.error('Both SMTP configurations failed');
-                    throw new Error('SMTP configuration failed: ' + fallbackError.message);
-                }
-            }
+            console.log('Creating nodemailer transporter...');
+            const transporter = nodemailer.createTransporter(smtpConfig);
+            
+            console.log('SMTP transporter created successfully');
 
             // Create the change password URL
             const changePasswordUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://vapes-shop.top'}/auth/change-password?token=${resetToken}`;
@@ -203,15 +158,10 @@ export async function POST(request) {
                 html: htmlTemplate,
             };
 
-            console.log(`Attempting to send email to: ${user.email} using ${transporterUsed} configuration`);
+            console.log(`Attempting to send email to: ${user.email}`);
             
-            // Send with timeout
-            const emailResult = await Promise.race([
-                transporter.sendMail(mailOptions),
-                new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Email sending timeout')), 30000)
-                )
-            ]);
+            // Send email directly (no timeout wrapper needed)
+            const emailResult = await transporter.sendMail(mailOptions);
             
             console.log('Email sent successfully:', emailResult.messageId);
 

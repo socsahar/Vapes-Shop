@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+const nodemailer = require('nodemailer');
 
 export async function POST(request) {
     try {
@@ -57,7 +58,6 @@ export async function POST(request) {
             try {
                 console.log(`Trying email configuration: ${emailConfig.name}`);
                 
-                const nodemailer = require('nodemailer');
                 const transporter = nodemailer.createTransporter(emailConfig.config);
 
                 const mailOptions = {
