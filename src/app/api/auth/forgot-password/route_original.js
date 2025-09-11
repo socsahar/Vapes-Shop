@@ -59,10 +59,15 @@ export async function POST(request) {
             );
         }
 
-        // Send password reset email using simple service
+        // Send password reset email using simple email service
         try {
             console.log('Preparing to send password reset email...');
             
+            console.log('Creating nodemailer transporter...');
+            const transporter = createEmailTransporter();
+            
+            console.log('SMTP transporter created successfully');
+
             // Create the change password URL
             const changePasswordUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://vapes-shop.top'}/auth/change-password?token=${resetToken}`;
 
@@ -133,28 +138,20 @@ export async function POST(request) {
             </html>
             `;
 
-            // Use simple email service instead of problematic nodemailer
-            console.log('Sending email via simple email service...');
-            
-            const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'https://vapes-shop.top'}/api/simple-email`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    to: user.email,
-                    subject: '🔑 איפוס סיסמה - הוייפ שופ',
-                    html: htmlTemplate
-                })
-            });
+            // Send email with retry mechanism
+            const mailOptions = {
+                from: `"הוייפ שופ" <${process.env.GMAIL_USER}>`,
+                to: user.email,
+                subject: '🔑 איפוס סיסמה - הוייפ שופ',
+                html: htmlTemplate,
+            };
 
-            const emailResult = await emailResponse.json();
+            console.log(`Attempting to send email to: ${user.email}`);
             
-            if (emailResult.success) {
-                console.log('Email sent successfully via simple email service:', emailResult.messageId);
-            } else {
-                throw new Error(emailResult.error || 'Simple email service failed');
-            }
+            // Send email directly (no timeout wrapper needed)
+            const emailResult = await transporter.sendMail(mailOptions);
+            
+            console.log('Email sent successfully:', emailResult.messageId);
 
             return NextResponse.json({
                 success: true,
