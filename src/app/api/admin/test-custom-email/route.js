@@ -75,7 +75,7 @@ export async function POST(request) {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        from: 'onboarding@resend.dev', // Use Resend's default from address
+                        from: 'noreply@vapes-shop.top', // Use your verified domain
                         to: [email],
                         subject: subject,
                         html: htmlTemplate
