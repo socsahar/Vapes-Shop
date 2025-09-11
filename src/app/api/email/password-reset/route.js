@@ -12,17 +12,29 @@ export async function POST(request) {
             );
         }
 
-        // Configure email transporter (you'll need to set up your email credentials)
-        const transporter = nodemailer.createTransporter({
-            service: 'gmail', // or your email service
+        // Configure email transporter with better error handling
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
             auth: {
-                user: process.env.GMAIL_USER, // Your email
-                pass: process.env.GMAIL_APP_PASSWORD, // Your email password or app password
+                user: process.env.GMAIL_USER,
+                pass: process.env.GMAIL_APP_PASSWORD,
             },
         });
 
+        // Test the connection first
+        try {
+            await transporter.verify();
+            console.log('SMTP connection verified successfully');
+        } catch (verifyError) {
+            console.error('SMTP verification failed:', verifyError);
+            return NextResponse.json(
+                { error: 'בעיה בהגדרות האימייל' },
+                { status: 500 }
+            );
+        }
+
         // Create the change password URL
-        const changePasswordUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3001'}/auth/change-password?token=${resetToken}`;
+        const changePasswordUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/auth/change-password?token=${resetToken}`;
 
         // Email template in Hebrew
         const htmlTemplate = `
@@ -177,7 +189,11 @@ export async function POST(request) {
             html: htmlTemplate,
         };
 
-        await transporter.sendMail(mailOptions);
+        console.log('Attempting to send email to:', email);
+        console.log('From address:', process.env.GMAIL_USER);
+        
+        const emailResult = await transporter.sendMail(mailOptions);
+        console.log('Email sent successfully:', emailResult.messageId);
 
         return NextResponse.json({
             success: true,
@@ -186,8 +202,13 @@ export async function POST(request) {
 
     } catch (error) {
         console.error('Email sending error:', error);
+        console.error('Error details:', {
+            code: error.code,
+            command: error.command,
+            response: error.response
+        });
         return NextResponse.json(
-            { error: 'Failed to send email' },
+            { error: 'Failed to send email: ' + error.message },
             { status: 500 }
         );
     }

@@ -42,10 +42,10 @@ function ChangePasswordForm() {
             if (response.ok && data.valid) {
                 setTokenValid(true);
             } else {
-                setError('אסימון איפוס הסיסמה לא תקין או פג תוקף');
+                setError('הקישור פג תוקף');
             }
         } catch (error) {
-            setError('שגיאה בבדיקת אסימון איפוס הסיסמה');
+            setError('שגיאה בבדיקת הקישור');
         }
     };
 

@@ -139,14 +139,6 @@ export default function LoginPage() {
                                 שכחת סיסמה?
                             </Link>
                         </div>
-                        
-                        <div className="auth-divider"></div>
-                        <Link 
-                            href="/" 
-                            className="auth-link"
-                        >
-                            ← חזרה לעמוד הבית
-                        </Link>
                     </div>
                 </div>
             </div>

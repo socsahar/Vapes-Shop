@@ -38,6 +38,30 @@ export default function RegisterPage() {
             return;
         }
 
+        // Phone validation - Israeli format (10 digits)
+        const phoneRegex = /^\d{10}$/;
+        if (!phoneRegex.test(formData.phone)) {
+            setError('מספר הטלפון חייב להכיל בדיוק 10 ספרות');
+            setIsLoading(false);
+            return;
+        }
+
+        // Username validation - only letters, numbers, and Hebrew characters
+        const usernameRegex = /^[a-zA-Z0-9\u0590-\u05FF]+$/;
+        if (!usernameRegex.test(formData.username)) {
+            setError('שם המשתמש יכול להכיל רק אותיות, מספרים ועברית');
+            setIsLoading(false);
+            return;
+        }
+
+        // Full name validation - only letters, spaces, and Hebrew characters
+        const fullNameRegex = /^[a-zA-Z\u0590-\u05FF\s]+$/;
+        if (!fullNameRegex.test(formData.fullName)) {
+            setError('השם המלא יכול להכיל רק אותיות, רווחים ועברית');
+            setIsLoading(false);
+            return;
+        }
+
         try {
             const { data, error } = await signUpWithPassword({
                 username: formData.username,
@@ -67,10 +91,37 @@ export default function RegisterPage() {
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: value
-        }));
+        
+        // Special handling for phone number - only allow digits
+        if (name === 'phone') {
+            const digitsOnly = value.replace(/\D/g, '');
+            setFormData(prev => ({
+                ...prev,
+                [name]: digitsOnly
+            }));
+        }
+        // Special handling for username - only letters, numbers, and Hebrew
+        else if (name === 'username') {
+            const filteredValue = value.replace(/[^a-zA-Z0-9\u0590-\u05FF]/g, '');
+            setFormData(prev => ({
+                ...prev,
+                [name]: filteredValue
+            }));
+        }
+        // Special handling for full name - only letters, spaces, and Hebrew
+        else if (name === 'fullName') {
+            const filteredValue = value.replace(/[^a-zA-Z\u0590-\u05FF\s]/g, '');
+            setFormData(prev => ({
+                ...prev,
+                [name]: filteredValue
+            }));
+        }
+        else {
+            setFormData(prev => ({
+                ...prev,
+                [name]: value
+            }));
+        }
     };
 
     if (success) {
@@ -146,6 +197,8 @@ export default function RegisterPage() {
                                     onChange={handleInputChange}
                                     required
                                     placeholder="הזן שם מלא"
+                                    pattern="[a-zA-Z\u0590-\u05FF\s]+"
+                                    title="השם המלא יכול להכיל רק אותיות, רווחים ועברית"
                                     dir="auto"
                                 />
                             </div>
@@ -162,6 +215,8 @@ export default function RegisterPage() {
                                     onChange={handleInputChange}
                                     required
                                     placeholder="בחר שם משתמש"
+                                    pattern="[a-zA-Z0-9\u0590-\u05FF]+"
+                                    title="שם המשתמש יכול להכיל רק אותיות, מספרים ועברית"
                                     dir="auto"
                                 />
                             </div>
@@ -184,7 +239,7 @@ export default function RegisterPage() {
 
                             <div>
                                 <label htmlFor="phone">
-                                    טלפון
+                                    טלפון *
                                 </label>
                                 <input
                                     type="tel"
@@ -192,8 +247,12 @@ export default function RegisterPage() {
                                     name="phone"
                                     value={formData.phone}
                                     onChange={handleInputChange}
-                                    placeholder="050-123-4567"
+                                    required
+                                    placeholder="0501234567"
+                                    pattern="\d{10}"
+                                    maxLength="10"
                                     dir="ltr"
+                                    className="text-left"
                                 />
                             </div>
 
@@ -251,14 +310,6 @@ export default function RegisterPage() {
                             className="auth-link"
                         >
                             יש לך כבר חשבון? התחבר כאן
-                        </Link>
-                        
-                        <div className="auth-divider"></div>
-                        <Link 
-                            href="/" 
-                            className="auth-link"
-                        >
-                            ← חזרה לעמוד הבית
                         </Link>
                     </div>
                 </div>

@@ -10,8 +10,7 @@ const nextConfig = {
   },
   productionBrowserSourceMaps: false,
   compress: true,
-  poweredByHeader: false,
-  swcMinify: true
+  poweredByHeader: false
 };
 
 export default nextConfig;

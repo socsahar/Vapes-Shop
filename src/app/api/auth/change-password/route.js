@@ -1,11 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase';
 import bcrypt from 'bcryptjs';
-
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 export async function POST(request) {
     try {
@@ -26,7 +21,7 @@ export async function POST(request) {
         }
 
         // Validate token and get user info
-        const { data: tokenData, error: tokenError } = await supabase
+        const { data: tokenData, error: tokenError } = await supabaseAdmin
             .from('password_reset_tokens')
             .select('*')
             .eq('token', token)
@@ -36,19 +31,43 @@ export async function POST(request) {
 
         if (tokenError || !tokenData) {
             return NextResponse.json(
-                { error: 'אסימון לא תקין או פג תוקף' },
+                { error: 'הקישור פג תוקף' },
+                { status: 400 }
+            );
+        }
+
+        // Get current user to check if new password is same as old
+        const { data: currentUser, error: userError } = await supabaseAdmin
+            .from('users')
+            .select('password')
+            .eq('id', tokenData.user_id)
+            .single();
+
+        if (userError || !currentUser) {
+            return NextResponse.json(
+                { error: 'שגיאה בטעינת נתוני משתמש' },
+                { status: 500 }
+            );
+        }
+
+        // Check if new password is same as current password
+        const isSamePassword = await bcrypt.compare(newPassword, currentUser.password);
+        if (isSamePassword) {
+            return NextResponse.json(
+                { error: 'הסיסמה החדשה חייבת להיות שונה מהסיסמה הנוכחית' },
                 { status: 400 }
             );
         }
 
         // Hash the new password
         const hashedPassword = await bcrypt.hash(newPassword, 12);
+        console.log('Hashed new password, updating user:', tokenData.user_id);
 
         // Update user password and set force_password_change to false
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabaseAdmin
             .from('users')
             .update({ 
-                password_hash: hashedPassword,
+                password: hashedPassword,
                 force_password_change: false,
                 updated_at: new Date().toISOString()
             })
@@ -56,18 +75,20 @@ export async function POST(request) {
 
         if (updateError) {
             console.error('Error updating password:', updateError);
+            console.error('Update error details:', JSON.stringify(updateError, null, 2));
             return NextResponse.json(
                 { error: 'שגיאה בעדכון הסיסמה' },
                 { status: 500 }
             );
         }
 
+        console.log('Password updated successfully for user:', tokenData.user_id);
+
         // Mark token as used
-        const { error: markUsedError } = await supabase
+        const { error: markUsedError } = await supabaseAdmin
             .from('password_reset_tokens')
             .update({ 
-                used: true,
-                used_at: new Date().toISOString()
+                used: true
             })
             .eq('token', token);
 
