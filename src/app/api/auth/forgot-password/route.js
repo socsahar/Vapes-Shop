@@ -5,7 +5,9 @@ import crypto from 'crypto';
 // Use dynamic import for nodemailer to avoid bundling issues
 async function createEmailTransporter() {
     const nodemailer = await import('nodemailer');
-    return nodemailer.default.createTransporter({
+    // Handle both CommonJS and ES module exports
+    const mailer = nodemailer.default || nodemailer;
+    return mailer.createTransporter({
         service: 'gmail',
         auth: {
             user: process.env.GMAIL_USER,

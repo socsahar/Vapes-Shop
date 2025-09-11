@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server';
 // Use dynamic import for nodemailer compatibility
 async function getNodemailer() {
     const nodemailer = await import('nodemailer');
-    return nodemailer.default;
+    // Handle both CommonJS and ES module exports
+    return nodemailer.default || nodemailer;
 }
 
 export async function POST(request) {
