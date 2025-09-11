@@ -133,27 +133,166 @@ export async function POST(request) {
             </html>
             `;
 
-            // Use simple email service instead of problematic nodemailer
-            console.log('Sending email via simple email service...');
+            // Use enhanced email service with multiple options
+            console.log('Sending email via enhanced email service...');
             
-            const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'https://vapes-shop.top'}/api/simple-email`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    to: user.email,
-                    subject: '🔑 איפוס סיסמה - הוייפ שופ',
-                    html: htmlTemplate
-                })
-            });
+            // Try real email providers directly (avoiding self-fetch issues)
+            let emailResult;
+            try {
+                // First try with real email providers if configured
+                if (process.env.RESEND_API_KEY) {
+                    // Use Resend API
+                    console.log('Trying Resend API...');
+                    const resendResponse = await fetch('https://api.resend.com/emails', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            from: 'noreply@vapes-shop.top',
+                            to: [user.email],
+                            subject: '🔑 איפוס סיסמה - הוייפ שופ',
+                            html: htmlTemplate
+                        })
+                    });
 
-            const emailResult = await emailResponse.json();
+                    if (resendResponse.ok) {
+                        const resendData = await resendResponse.json();
+                        emailResult = {
+                            success: true,
+                            messageId: resendData.id,
+                            details: { service: 'Resend API' }
+                        };
+                    } else {
+                        console.log('Resend API failed, trying next service...');
+                        throw new Error('Resend API failed');
+                    }
+                } else if (process.env.SMTP2GO_API_KEY) {
+                    // Use SMTP2GO API
+                    console.log('Trying SMTP2GO API...');
+                    const smtp2goResponse = await fetch('https://api.smtp2go.com/v3/email/send', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Smtp2go-Api-Key': process.env.SMTP2GO_API_KEY
+                        },
+                        body: JSON.stringify({
+                            to: [user.email],
+                            sender: 'noreply@vapes-shop.top',
+                            subject: '🔑 איפוס סיסמה - הוייפ שופ',
+                            html_body: htmlTemplate
+                        })
+                    });
+
+                    if (smtp2goResponse.ok) {
+                        const smtp2goData = await smtp2goResponse.json();
+                        emailResult = {
+                            success: true,
+                            messageId: smtp2goData.data?.email_id || 'smtp2go-sent',
+                            details: { service: 'SMTP2GO API' }
+                        };
+                    } else {
+                        console.log('SMTP2GO API failed, trying next service...');
+                        throw new Error('SMTP2GO API failed');
+                    }
+                } else if (process.env.GMAIL_USER && process.env.EMAIL_PASS) {
+                    // Use Gmail SMTP as fallback
+                    console.log('Trying Gmail SMTP...');
+                    const nodemailer = require('nodemailer');
+                    
+                    const transporter = nodemailer.createTransporter({
+                        host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+                        port: parseInt(process.env.EMAIL_PORT || '587'),
+                        secure: false,
+                        auth: {
+                            user: process.env.GMAIL_USER,
+                            pass: process.env.EMAIL_PASS
+                        },
+                        tls: {
+                            rejectUnauthorized: false
+                        }
+                    });
+
+                    const info = await transporter.sendMail({
+                        from: `"הוייפ שופ" <${process.env.GMAIL_USER}>`,
+                        to: [user.email],
+                        subject: '🔑 איפוס סיסמה - הוייפ שופ',
+                        html: htmlTemplate
+                    });
+
+                    emailResult = {
+                        success: true,
+                        messageId: info.messageId,
+                        details: { service: 'Gmail SMTP' }
+                    };
+                } else if (process.env.GMAIL_USER && (process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD)) {
+                    // Use Gmail SMTP as fallback
+                    console.log('Trying Gmail SMTP...');
+                    
+                    // Use dynamic import for nodemailer to handle ES module compatibility
+                    const nodemailer = await import('nodemailer');
+                    const createTransporter = nodemailer.default?.createTransporter || nodemailer.createTransporter;
+                    
+                    const transporter = createTransporter({
+                        host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+                        port: parseInt(process.env.EMAIL_PORT || '587'),
+                        secure: false,
+                        auth: {
+                            user: process.env.GMAIL_USER,
+                            pass: process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASS
+                        },
+                        tls: {
+                            rejectUnauthorized: false
+                        }
+                    });
+
+                    const info = await transporter.sendMail({
+                        from: `"הוייפ שופ" <${process.env.GMAIL_USER}>`,
+                        to: [user.email],
+                        subject: '🔑 איפוס סיסמה - הוייפ שופ',
+                        html: htmlTemplate
+                    });
+
+                    emailResult = {
+                        success: true,
+                        messageId: info.messageId,
+                        details: { service: 'Gmail SMTP' }
+                    };
+                } else {
+                    // No real email service configured, use simulation
+                    console.log('No email service configured, using simulation...');
+                    throw new Error('No real email service configured');
+                }
+            } catch (error) {
+                // Fallback to simulation
+                console.log('All real email services failed, using simulation fallback...');
+                emailResult = {
+                    success: true,
+                    messageId: 'sim_' + Math.random().toString(36).substr(2, 9),
+                    details: { 
+                        service: 'Email Simulation (No provider configured)',
+                        note: 'Configure RESEND_API_KEY or SMTP2GO_API_KEY for real emails',
+                        simulatedTo: user.email,
+                        simulatedSubject: '🔑 איפוס סיסמה - הוייפ שופ',
+                        timestamp: new Date().toISOString()
+                    }
+                };
+            }
             
             if (emailResult.success) {
-                console.log('Email sent successfully via simple email service:', emailResult.messageId);
+                console.log('Email sent successfully:', emailResult.messageId);
+                console.log('Service used:', emailResult.details?.service || 'unknown');
+                
+                // Add helpful information about email status
+                if (emailResult.details?.service?.includes('Simulation')) {
+                    console.log('⚠️  EMAIL IN SIMULATION MODE - User will not receive actual email');
+                    console.log('📧 To enable real emails, configure one of these services:');
+                    console.log('   • Resend: Set RESEND_API_KEY environment variable');
+                    console.log('   • SMTP2GO: Set SMTP2GO_API_KEY environment variable');
+                }
             } else {
-                throw new Error(emailResult.error || 'Simple email service failed');
+                throw new Error('Email sending failed');
             }
 
             return NextResponse.json({

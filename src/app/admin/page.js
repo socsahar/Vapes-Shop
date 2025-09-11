@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { getCurrentUser, signOut } from '../../lib/supabase';
+import { getCurrentUser, signOut, getAuthHeaders } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { showToast } from '../../components/Toast';
@@ -68,6 +68,9 @@ export default function AdminPage() {
     const [autoCloseLoading, setAutoCloseLoading] = useState(false);
     const [emailTestLoading, setEmailTestLoading] = useState(false);
     const [testOrderId, setTestOrderId] = useState('');
+    const [customEmailTestLoading, setCustomEmailTestLoading] = useState(false);
+    const [testEmailAddress, setTestEmailAddress] = useState('');
+    const [testEmailType, setTestEmailType] = useState('password_reset');
     const router = useRouter();
 
     useEffect(() => {
@@ -810,6 +813,51 @@ export default function AdminPage() {
             showToast('שגיאה בשליחת האימייל', 'error');
         } finally {
             setEmailTestLoading(false);
+        }
+    };
+
+    const handleTestCustomEmail = async () => {
+        if (!testEmailAddress.trim()) {
+            showToast('אנא הזן כתובת אימייל', 'error');
+            return;
+        }
+
+        // Basic email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(testEmailAddress)) {
+            showToast('אנא הזן כתובת אימייל תקינה', 'error');
+            return;
+        }
+
+        setCustomEmailTestLoading(true);
+
+        try {
+            const authHeaders = getAuthHeaders();
+            const response = await fetch('/api/admin/test-custom-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...authHeaders
+                },
+                body: JSON.stringify({ 
+                    email: testEmailAddress,
+                    emailType: testEmailType 
+                })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                showToast(`אימייל ${testEmailType === 'password_reset' ? 'איפוס סיסמה' : 'בדיקה כללי'} נשלח בהצלחה ל-${testEmailAddress}!`, 'success');
+                setTestEmailAddress('');
+            } else {
+                showToast(result.error || 'שגיאה בשליחת האימייל', 'error');
+            }
+        } catch (error) {
+            console.error('Error testing custom email:', error);
+            showToast('שגיאה בשליחת האימייל', 'error');
+        } finally {
+            setCustomEmailTestLoading(false);
         }
     };
 
@@ -1646,6 +1694,64 @@ export default function AdminPage() {
                                 <div className="admin-settings-grid">
                                     <div className="admin-settings-card">
                                         <div className="admin-settings-card-header">
+                                            <h4>בדיקת אימייל מותאם אישית</h4>
+                                            <p>שלח אימיילי בדיקה לכתובת שתבחר</p>
+                                        </div>
+                                        <div className="admin-settings-card-content">
+                                            <div className="form-group">
+                                                <label htmlFor="test_email_address">כתובת אימייל לבדיקה</label>
+                                                <input
+                                                    type="email"
+                                                    id="test_email_address"
+                                                    value={testEmailAddress}
+                                                    onChange={(e) => setTestEmailAddress(e.target.value)}
+                                                    placeholder="example@domain.com"
+                                                    className="admin-input"
+                                                    dir="ltr"
+                                                />
+                                                <small className="form-help">
+                                                    הזן כתובת אימייל תקינה לשליחת אימייל בדיקה
+                                                </small>
+                                            </div>
+                                            <div className="form-group">
+                                                <label htmlFor="test_email_type">סוג אימייל</label>
+                                                <select
+                                                    id="test_email_type"
+                                                    value={testEmailType}
+                                                    onChange={(e) => setTestEmailType(e.target.value)}
+                                                    className="admin-input"
+                                                >
+                                                    <option value="password_reset">🔑 איפוס סיסמה</option>
+                                                    <option value="general_test">📧 בדיקה כללית</option>
+                                                    <option value="welcome">👋 ברוכים הבאים</option>
+                                                    <option value="order_confirmation">✅ אישור הזמנה</option>
+                                                </select>
+                                                <small className="form-help">
+                                                    בחר סוג האימייל שברצונך לבדוק
+                                                </small>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={handleTestCustomEmail}
+                                                disabled={customEmailTestLoading}
+                                                className="admin-btn admin-btn-primary"
+                                            >
+                                                {customEmailTestLoading ? (
+                                                    <>
+                                                        <span className="spinner"></span>
+                                                        שולח...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        🚀 שלח אימייל בדיקה
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="admin-settings-card">
+                                        <div className="admin-settings-card-header">
                                             <h4>בדיקת אימייל אישור הזמנה</h4>
                                             <p>שלח אימייל אישור הזמנה לבדיקה</p>
                                         </div>
@@ -1668,7 +1774,7 @@ export default function AdminPage() {
                                                 type="button"
                                                 onClick={handleTestOrderEmail}
                                                 disabled={emailTestLoading}
-                                                className="admin-btn admin-btn-primary"
+                                                className="admin-btn admin-btn-secondary"
                                             >
                                                 {emailTestLoading ? (
                                                     <>
@@ -1677,7 +1783,7 @@ export default function AdminPage() {
                                                     </>
                                                 ) : (
                                                     <>
-                                                        📧 שלח אימייל בדיקה
+                                                        📧 שלח אימייל הזמנה
                                                     </>
                                                 )}
                                             </button>

@@ -12,6 +12,8 @@ export async function POST(request) {
         const { to, subject, html, text } = await request.json();
 
         // Enhanced email sending with multiple fallback options
+        const gmailPassword = process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASS;
+        
         const emailConfigs = [
             // Configuration 1: Standard SMTP
             {
@@ -20,7 +22,7 @@ export async function POST(request) {
                     service: 'gmail',
                     auth: {
                         user: process.env.GMAIL_USER,
-                        pass: process.env.GMAIL_APP_PASSWORD,
+                        pass: gmailPassword,
                     }
                 }
             },
@@ -33,7 +35,7 @@ export async function POST(request) {
                     secure: false,
                     auth: {
                         user: process.env.GMAIL_USER,
-                        pass: process.env.GMAIL_APP_PASSWORD,
+                        pass: gmailPassword,
                     },
                     tls: {
                         rejectUnauthorized: false
@@ -49,7 +51,7 @@ export async function POST(request) {
                     secure: true,
                     auth: {
                         user: process.env.GMAIL_USER,
-                        pass: process.env.GMAIL_APP_PASSWORD,
+                        pass: gmailPassword,
                     },
                     tls: {
                         rejectUnauthorized: false
