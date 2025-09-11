@@ -23,6 +23,16 @@ export default function ShopPage() {
     const [userParticipation, setUserParticipation] = useState({});
     const [showUserOrderModal, setShowUserOrderModal] = useState(false);
     const [selectedUserOrder, setSelectedUserOrder] = useState(null);
+    const [shopSettings, setShopSettings] = useState({
+        closedTitle: 'החנות סגורה כרגע',
+        closedMessage: 'החנות פועלת במודל הזמנות קבוצתיות בלבד\nכאשר המנהל יפתח הזמנה קבוצתית חדשה, תוכל להשתתף',
+        closedInstructions: [
+            '🕐 המנהל פותח הזמנה קבוצתית עם תאריך סגירה',
+            '📧 תקבל התראה באימייל כשההזמנה נפתחת',
+            '🛒 תוכל להצטרף ולהזמין מוצרים עד תאריך הסגירה',
+            '📦 ההזמנה נסגרת אוטומטית ונשלחת לספק'
+        ]
+    });
     const router = useRouter();
 
     useEffect(() => {
@@ -39,6 +49,7 @@ export default function ShopPage() {
         if (user) {
             fetchGroupOrders();
             fetchProducts(); // Always fetch products
+            fetchShopSettings();
         }
     }, [user]);
 
@@ -143,6 +154,40 @@ export default function ShopPage() {
             console.error('Error fetching products:', error);
         } finally {
             setProductsLoading(false);
+        }
+    };
+
+    const fetchShopSettings = async () => {
+        try {
+            const response = await fetch('/api/shop/status');
+            if (response.ok) {
+                const data = await response.json();
+                if (data.message) {
+                    try {
+                        // Try to parse as JSON first (new structured format)
+                        const parsedSettings = JSON.parse(data.message);
+                        if (parsedSettings.closedTitle || parsedSettings.closedMessage || parsedSettings.closedInstructions) {
+                            setShopSettings(prev => ({
+                                ...prev,
+                                closedTitle: parsedSettings.closedTitle || prev.closedTitle,
+                                closedMessage: parsedSettings.closedMessage || prev.closedMessage,
+                                closedInstructions: parsedSettings.closedInstructions || prev.closedInstructions
+                            }));
+                            return;
+                        }
+                    } catch (jsonError) {
+                        // Fallback to old format (plain text)
+                        const [title, ...messageParts] = data.message.split('\n');
+                        setShopSettings(prev => ({
+                            ...prev,
+                            closedTitle: title || prev.closedTitle,
+                            closedMessage: messageParts.join('\n') || prev.closedMessage
+                        }));
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching shop settings:', error);
         }
     };
 
@@ -367,19 +412,21 @@ export default function ShopPage() {
                         <div className="shop-closed-state">
                             <div className="closed-header">
                                 <div className="closed-icon">🔒</div>
-                                <h1 className="closed-title">החנות סגורה כרגע</h1>
+                                <h1 className="closed-title">{shopSettings.closedTitle}</h1>
                                 <p className="closed-message">
-                                    החנות פועלת במודל הזמנות קבוצתיות בלבד
-                                    <br />
-                                    כאשר המנהל יפתח הזמנה קבוצתית חדשה, תוכל להשתתף
+                                    {shopSettings.closedMessage.split('\n').map((line, index) => (
+                                        <span key={index}>
+                                            {line}
+                                            {index < shopSettings.closedMessage.split('\n').length - 1 && <br />}
+                                        </span>
+                                    ))}
                                 </p>
                                 <div className="closed-info">
-                                    <h3>איך זה עובד?</h3>
+                                    <h3 className="how-it-works-heading">איך זה עובד?</h3>
                                     <ul>
-                                        <li>🕐 המנהל פותח הזמנה קבוצתית עם תאריך סגירה</li>
-                                        <li>📧 תקבל התראה באימייל כשההזמנה נפתחת</li>
-                                        <li>🛒 תוכל להצטרף ולהזמין מוצרים עד תאריך הסגירה</li>
-                                        <li>📦 ההזמנה נסגרת אוטומטית ונשלחת לספק</li>
+                                        {shopSettings.closedInstructions.map((instruction, index) => (
+                                            <li key={index}>{instruction}</li>
+                                        ))}
                                     </ul>
                                 </div>
                                 <button 

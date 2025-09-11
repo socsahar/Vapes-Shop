@@ -498,19 +498,6 @@ function generateWelcomeEmailTemplate(user) {
                 <p style="font-size: 18px; color: #2d3748;"><strong>שלום ${user.full_name},</strong></p>
                 <p style="font-size: 16px; color: #4a5568;">תודה שבחרת בהוייפ שופ! החשבון שלך נוצר בהצלחה ואתה מוכן להתחיל לקנות מהמגוון הרחב שלנו.</p>
 
-                <div class="features">
-                    <h3>🌟 מה מחכה לך אצלנו:</h3>
-                    <ul>
-                        <li><strong>מגוון עצום של מוצרים</strong> - ויפים, נוזלים, אביזרים ועוד</li>
-                        <li><strong>איכות מעולה</strong> - רק מוצרים מהמותגים הטובים בעולם</li>
-                        <li><strong>מחירים תחרותיים</strong> - הטובים ביותר בשוק הישראלי</li>
-                        <li><strong>משלוח מהיר</strong> - לכל רחבי הארץ תוך 2-3 ימי עסקים</li>
-                        <li><strong>הזמנות קבוצתיות</strong> - חסכו יותר עם ההזמנות הקבוצתיות שלנו</li>
-                        <li><strong>שירות לקוחות מעולה</strong> - אנחנו כאן בשבילך 24/7</li>
-                        <li><strong>משלוח חינם</strong> - על הזמנות מעל ₪200</li>
-                    </ul>
-                </div>
-
                 <div class="cta-section">
                     <h3 style="margin-top: 0; font-size: 22px;">🛍️ מוכן להתחיל לקנות?</h3>
                     <p style="font-size: 16px; margin: 15px 0;">כנס לחנות שלנו ותגלה את המגוון המדהים!</p>
@@ -530,7 +517,6 @@ function generateWelcomeEmailTemplate(user) {
                         <li>בחר ויפ שמתאים לרמת הניקוטין שלך</li>
                         <li>נסה טעמים שונים למצוא את המועדף עליך</li>
                         <li>שמור על הויפ נקי לטעם טוב יותר</li>
-                        <li>הצטרף להזמנות הקבוצתיות שלנו לחיסכון</li>
                     </ul>
                 </div>
             </div>
