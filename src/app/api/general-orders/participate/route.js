@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, getCurrentUserFromRequest } from '../../../../lib/supabase';
+import { processQueuedEmails } from '../../../../lib/emailProcessor';
 
 // POST /api/general-orders/participate - Join a general order with items
 export async function POST(request) {
@@ -215,20 +216,23 @@ export async function POST(request) {
             } else {
                 console.log('Order confirmation email queued successfully');
                 
-                // Trigger automatic email processing
-                try {
-                    const emailProcessResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/email-service`, {
-                        method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json'
+                // Process queued emails directly (non-blocking)
+                setTimeout(async () => {
+                    try {
+                        console.log('Processing queued emails directly...');
+                        const result = await processQueuedEmails();
+                        if (result.success) {
+                            console.log('Email processing completed:', result.message);
+                            if (result.processed > 0) {
+                                console.log(`✅ Successfully sent ${result.processed} emails`);
+                            }
+                        } else {
+                            console.log('Email processing had issues:', result.error);
                         }
-                    });
-                    if (emailProcessResponse.ok) {
-                        console.log('Email processing triggered successfully');
+                    } catch (error) {
+                        console.log('Email processing failed (but email is still queued):', error.message);
                     }
-                } catch (processError) {
-                    console.error('Error triggering email processing:', processError);
-                }
+                }, 1000); // Wait 1 second before processing
             }
         } catch (emailQueueError) {
             console.error('Error in email queue system:', emailQueueError);

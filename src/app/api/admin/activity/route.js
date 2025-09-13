@@ -8,7 +8,6 @@ const supabase = createClient(
 
 export async function GET() {
   try {
-    console.log('=== Activity API Called ===');
     const activities = [];
 
     // Get recent orders
@@ -17,8 +16,6 @@ export async function GET() {
       .select('id, user_id, total_amount, status, created_at, users!orders_user_id_fkey(full_name)')
       .order('created_at', { ascending: false })
       .limit(5);
-
-    console.log('Orders query result:', { orders, ordersError });
 
     if (ordersError) {
       console.error('Error fetching orders:', ordersError);
@@ -40,8 +37,6 @@ export async function GET() {
       .order('created_at', { ascending: false })
       .limit(3);
 
-    console.log('Users query result:', { users, usersError });
-
     if (usersError) {
       console.error('Error fetching users:', usersError);
     } else if (users && users.length > 0) {
@@ -62,8 +57,6 @@ export async function GET() {
       .order('updated_at', { ascending: false })
       .limit(3);
 
-    console.log('Products query result:', { products, productsError });
-
     if (productsError) {
       console.error('Error fetching products:', productsError);
     } else if (products && products.length > 0) {
@@ -78,8 +71,6 @@ export async function GET() {
       });
     }
 
-    console.log('Final activities:', activities);
-
     // Sort all activities by time (most recent first)
     activities.sort((a, b) => {
       // Convert relative time back to timestamp for sorting
@@ -90,7 +81,6 @@ export async function GET() {
 
     // Return the 10 most recent activities
     const result = { activities: activities.slice(0, 10) };
-    console.log('Returning activities:', result);
     return NextResponse.json(result);
 
   } catch (error) {

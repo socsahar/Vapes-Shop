@@ -244,12 +244,15 @@ export async function POST(request) {
       console.error('Shop RPC function not available:', shopRpcError);
     }
 
-    // Queue opening email notification
+    // Queue opening email notification to admin
     try {
+      // Get admin email from environment or use default
+      const adminEmail = process.env.ADMIN_EMAIL || 'admin@vapes-shop.top';
+      
       const { error: emailError } = await supabase
         .from('email_logs')
         .insert([{
-          recipient_email: 'SYSTEM_ORDER_OPENED',
+          recipient_email: adminEmail,
           subject: `הזמנה קבוצתית חדשה נפתחה - ${title}`,
           body: `GENERAL_ORDER_OPENED:${newOrder.id}`,
           status: 'failed' // Use 'failed' as queue status, will be changed to 'sent' when processed

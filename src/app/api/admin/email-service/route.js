@@ -1,67 +1,64 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import nodemailer from 'nodemailer';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Multi-provider email sending function
+// Production-ready email sending function - RESEND ONLY
 async function sendEmailWithProviders(mailOptions) {
-    // Try Resend API first (primary service)
-    if (process.env.RESEND_API_KEY) {
-        try {
-            console.log('Trying Resend API for admin email...');
-            
-            const resendResponse = await fetch('https://api.resend.com/emails', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    from: 'noreply@vapes-shop.top',
-                    to: Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to],
-                    subject: mailOptions.subject,
-                    html: mailOptions.html
-                })
-            });
-
-            if (resendResponse.ok) {
-                const resendData = await resendResponse.json();
-                console.log('✅ Resend API email sent successfully!');
-                return { success: true, messageId: resendData.id, service: 'Resend API' };
-            } else {
-                const resendError = await resendResponse.json();
-                console.log('❌ Resend API failed:', resendError);
-                throw new Error(`Resend API failed: ${resendError.message || 'Unknown error'}`);
-            }
-        } catch (resendError) {
-            console.log('Resend API failed, trying Gmail SMTP fallback...', resendError.message);
-        }
+    if (!process.env.RESEND_API_KEY) {
+        throw new Error('RESEND_API_KEY is not configured. Email service unavailable.');
     }
 
-    // Fallback to Gmail SMTP
-    console.log('Using Gmail SMTP fallback...');
-    await transporter.sendMail(mailOptions);
-    return { success: true, service: 'Gmail SMTP' };
+    try {
+        console.log(`Sending email via Resend to: ${mailOptions.to}`);
+        
+        // Prepare email data for Resend API
+        const emailData = {
+            from: 'noreply@vapes-shop.top',
+            to: Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to],
+            subject: mailOptions.subject,
+            html: mailOptions.html
+        };
+        
+        // Add attachments if provided
+        if (mailOptions.attachments && mailOptions.attachments.length > 0) {
+            emailData.attachments = mailOptions.attachments.map(att => ({
+                filename: att.filename,
+                content: att.content.toString('base64'), // Convert buffer to base64
+                contentType: att.contentType || 'application/pdf'
+            }));
+            console.log(`📎 Including ${emailData.attachments.length} attachments`);
+        }
+        
+        const resendResponse = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(emailData)
+        });
+
+        if (resendResponse.ok) {
+            const resendData = await resendResponse.json();
+            console.log('✅ Email sent successfully via Resend API');
+            return { success: true, messageId: resendData.id, service: 'Resend API' };
+        } else {
+            const resendError = await resendResponse.json();
+            console.error('❌ Resend API failed:', resendError);
+            throw new Error(`Resend API failed: ${resendError.message || 'Unknown error'}`);
+        }
+    } catch (error) {
+        console.error('Email sending failed:', error);
+        throw error;
+    }
 }
 
-// Create email transporter with updated Gmail credentials
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
-  },
-  tls: {
-    rejectUnauthorized: false
-  }
-});
-
-// Custom sender name and email
-const SENDER_EMAIL = `"Vapes-Shop" <noreply@vapes-shop.top>`; // Use verified domain
+// Custom sender email - production ready
+const SENDER_EMAIL = 'noreply@vapes-shop.top';
 
 // GET - Process pending emails
 export async function GET() {
@@ -123,14 +120,53 @@ export async function GET() {
 }
 
 async function processEmail(emailLog) {
-  // Handle system notifications
-  if (emailLog.recipient_email.startsWith('SYSTEM_')) {
-    return await processSystemNotification(emailLog);
+  console.log(`🔍 Processing email: ${emailLog.body} -> ${emailLog.recipient_email}`);
+  
+  // Validate email address format for real recipients
+  if (!emailLog.recipient_email.startsWith('SYSTEM_')) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailLog.recipient_email)) {
+      console.log(`Invalid email address: ${emailLog.recipient_email}`);
+      await supabase
+        .from('email_logs')
+        .update({
+          status: 'error',
+          error_message: 'Invalid email address format',
+          sent_at: new Date().toISOString()
+        })
+        .eq('id', emailLog.id);
+      throw new Error(`Invalid email address: ${emailLog.recipient_email}`);
+    }
   }
 
   // Handle order confirmations
   if (emailLog.body.startsWith('USER_ORDER_CONFIRMATION:')) {
+    console.log('🎯 Routing to processOrderConfirmation');
     return await processOrderConfirmation(emailLog);
+  }
+  
+  // Handle general order opened notifications
+  if (emailLog.body.startsWith('GENERAL_ORDER_OPENED:')) {
+    return await processTemplatedEmail(emailLog, 'GENERAL_ORDER_OPENED');
+  }
+  
+  // Handle general order summary notifications
+  if (emailLog.body.startsWith('GENERAL_ORDER_SUMMARY:')) {
+    return await processTemplatedEmail(emailLog, 'GENERAL_ORDER_SUMMARY');
+  }
+  
+  // Handle general order reminders
+  if (emailLog.body.includes('GENERAL_ORDER_REMINDER_1H:')) {
+    return await processTemplatedEmail(emailLog, 'GENERAL_ORDER_REMINDER_1H');
+  }
+  
+  if (emailLog.body.includes('GENERAL_ORDER_REMINDER_10M:')) {
+    return await processTemplatedEmail(emailLog, 'GENERAL_ORDER_REMINDER_10M');
+  }
+  
+  // Handle general order closed notifications
+  if (emailLog.body.startsWith('GENERAL_ORDER_CLOSED:')) {
+    return await processTemplatedEmail(emailLog, 'GENERAL_ORDER_CLOSED');
   }
 
   // Handle regular email
@@ -154,6 +190,390 @@ async function processEmail(emailLog) {
     .eq('id', emailLog.id);
 
   console.log(`Email sent to ${emailLog.recipient_email}`);
+}
+
+// Generic function to process templated emails
+async function processTemplatedEmail(emailLog, templateType) {
+  try {
+    // Fetch the email template from database
+    const { data: emailTemplate, error: templateError } = await supabase
+      .from('email_templates')
+      .select('subject_template, body_template')
+      .eq('template_type', templateType)
+      .single();
+      
+    if (templateError || !emailTemplate) {
+      console.error(`Email template not found for ${templateType}:`, templateError);
+      throw new Error(`Email template not found for ${templateType}`);
+    }
+    
+    // Parse the email body to extract data
+    let orderData = {};
+    let recipientEmail = emailLog.recipient_email;
+    let isAdminRecipient = false;
+    
+    // Handle SYSTEM_ recipients by converting to admin email
+    if (recipientEmail.startsWith('SYSTEM_')) {
+      recipientEmail = process.env.ADMIN_EMAIL || 'admin@vapes-shop.top';
+      isAdminRecipient = true; // SYSTEM_ emails are always admin emails
+    } else {
+      // Check if recipient is an admin user
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('role')
+        .eq('email', recipientEmail)
+        .single();
+        
+      if (!userError && userData && userData.role === 'admin') {
+        isAdminRecipient = true;
+      }
+    }
+    
+    // Parse different template types
+    if (templateType === 'GENERAL_ORDER_OPENED') {
+      orderData = await parseGeneralOrderData(emailLog.body, 'GENERAL_ORDER_OPENED');
+    } else if (templateType === 'GENERAL_ORDER_SUMMARY') {
+      orderData = await parseGeneralOrderSummaryData(emailLog.body, isAdminRecipient);
+    } else if (templateType === 'GENERAL_ORDER_REMINDER_1H' || templateType === 'GENERAL_ORDER_REMINDER_10M') {
+      orderData = await parseGeneralOrderReminderData(emailLog.body, templateType);
+    } else if (templateType === 'GENERAL_ORDER_CLOSED') {
+      orderData = await parseGeneralOrderData(emailLog.body, 'GENERAL_ORDER_CLOSED');
+    }
+    
+    // Replace template variables
+    let subject = emailTemplate.subject_template || `התראה - ${templateType}`;
+    let htmlContent = emailTemplate.body_template || '';
+    
+    // Common template variables - matching database template names
+    const templateVars = {
+      // Order basic info - both formats for compatibility
+      '{{order_title}}': orderData.orderTitle || '',
+      '{{title}}': orderData.orderTitle || '', // Database uses this format
+      '{{order_description}}': orderData.orderDescription || orderData.orderTitle || '',
+      '{{description}}': orderData.orderDescription || orderData.orderTitle || '', // Database uses this format
+      '{{order_id}}': orderData.orderId || '',
+      '{{order_number}}': (orderData.orderId || '').substring(0, 8),
+      
+      // Financial info
+      '{{total_amount}}': orderData.totalAmount || '0',
+      '{{participant_count}}': orderData.participantCount || '0',
+      '{{total_participants}}': orderData.participantCount || '0', // Database uses this format
+      '{{total_items}}': orderData.totalItems || orderData.participantCount || '0',
+      '{{total_orders}}': orderData.participantCount || '0', // Database uses this format
+      '{{unique_products}}': orderData.uniqueProducts || '0', // Database uses this format
+      
+      // Status and timing
+      '{{order_status}}': orderData.status || '',
+      '{{closing_time}}': orderData.closingTime || '',
+      '{{order_deadline}}': orderData.closingTime || '',
+      '{{deadline}}': orderData.closingTime || '', // Database uses this format
+      '{{order_created}}': orderData.createdAt || '', // Database uses this format
+      '{{order_closed}}': orderData.closedAt || '', // Database uses this format
+      
+      // Creator info
+      '{{creator_name}}': orderData.creatorName || '', // Database uses this format
+      
+      // URLs
+      '{{admin_url}}': `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/admin`,
+      '{{admin_panel_url}}': `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/admin`, // Database uses this format
+      '{{shop_url}}': `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/shop`,
+      '{{unsubscribe_url}}': `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/unsubscribe`, // Database uses this format
+      
+      // Dates
+      '{{current_date}}': new Date().toLocaleDateString('he-IL'),
+      '{{current_year}}': new Date().getFullYear().toString(),
+      
+      // Special data
+      '{{trigger_type}}': orderData.triggerType || '',
+      '{{participants_list}}': orderData.participantsList || '',
+      '{{order_summary}}': orderData.orderSummary || ''
+    };
+    
+    // Replace all template variables in subject and body
+    Object.keys(templateVars).forEach(key => {
+      subject = subject.replace(new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), templateVars[key]);
+      htmlContent = htmlContent.replace(new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), templateVars[key]);
+    });
+    
+    // If template body is empty, use a basic fallback
+    if (!htmlContent || htmlContent.trim() === '') {
+      htmlContent = `
+        <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2>התראה מ-Vapes Shop</h2>
+          <p>הודעה בנוגע להזמנה: ${orderData.orderTitle || 'הזמנה קבוצתית'}</p>
+          <p>מספר הזמנה: ${(orderData.orderId || '').substring(0, 8)}</p>
+          <p>תאריך: ${new Date().toLocaleDateString('he-IL')}</p>
+        </div>
+      `;
+    }
+    
+    const mailOptions = {
+      from: SENDER_EMAIL,
+      to: recipientEmail,
+      subject: subject,
+      html: htmlContent
+    };
+    
+    // Add attachments if available (for GENERAL_ORDER_SUMMARY)
+    if (orderData.attachments && orderData.attachments.length > 0) {
+      mailOptions.attachments = orderData.attachments;
+      console.log(`📎 Adding ${orderData.attachments.length} PDF attachments to email`);
+    }
+
+    const emailResult = await sendEmailWithProviders(mailOptions);
+    console.log(`${templateType} email sent via ${emailResult.service} to ${recipientEmail} using database template`);
+
+    // Mark as sent
+    await supabase
+      .from('email_logs')
+      .update({
+        status: 'sent',
+        sent_at: new Date().toISOString()
+      })
+      .eq('id', emailLog.id);
+
+    return emailResult;
+    
+  } catch (error) {
+    console.error(`Error processing ${templateType} email:`, error);
+    throw error;
+  }
+}
+
+// Parse general order data for OPENED/CLOSED templates
+async function parseGeneralOrderData(emailBody, templateType) {
+  const orderIdMatch = emailBody.match(new RegExp(`${templateType}:(.+)`));
+  if (!orderIdMatch) {
+    throw new Error(`Invalid ${templateType} format`);
+  }
+  
+  const orderId = orderIdMatch[1];
+  
+  const { data: orderData, error: orderError } = await supabase
+    .from('general_orders')
+    .select(`
+      id, title, description, status, created_at, closes_at, created_by,
+      creator:created_by(full_name),
+      general_order_participants(id, total_amount, users!general_order_participants_user_id_fkey(full_name)),
+      general_order_items(product_id)
+    `)
+    .eq('id', orderId)
+    .single();
+    
+  if (orderError || !orderData) {
+    throw new Error('General order not found');
+  }
+  
+  const participantCount = orderData.general_order_participants?.length || 0;
+  const totalAmount = orderData.general_order_participants?.reduce((sum, p) => sum + (p.total_amount || 0), 0) || 0;
+  
+  // Get unique products count
+  const uniqueProductIds = [...new Set(orderData.general_order_items?.map(item => item.product_id) || [])];
+  const uniqueProducts = uniqueProductIds.length;
+  
+  return {
+    orderId: orderData.id,
+    orderTitle: orderData.title,
+    orderDescription: orderData.description || orderData.title,
+    status: orderData.status,
+    participantCount,
+    totalAmount,
+    uniqueProducts,
+    createdAt: orderData.created_at ? new Date(orderData.created_at).toLocaleString('he-IL') : '',
+    closingTime: orderData.closes_at ? new Date(orderData.closes_at).toLocaleString('he-IL') : '',
+    closedAt: orderData.status === 'closed' ? new Date().toLocaleString('he-IL') : '',
+    creatorName: orderData.creator?.full_name || 'מנהל המערכת'
+  };
+}
+
+// Parse general order summary data
+async function parseGeneralOrderSummaryData(emailBody, isAdminRecipient = false) {
+  // Parse format: GENERAL_ORDER_SUMMARY:orderId:triggerType
+  const parts = emailBody.split(':');
+  if (parts.length !== 3 || parts[0] !== 'GENERAL_ORDER_SUMMARY') {
+    throw new Error('Invalid general order summary format');
+  }
+  
+  const orderId = parts[1];
+  const triggerType = parts[2];
+  
+  const orderData = await parseGeneralOrderData(`GENERAL_ORDER_SUMMARY:${orderId}`, 'GENERAL_ORDER_SUMMARY');
+  
+  // Get participants list for summary
+  const { data: participants, error: participantsError } = await supabase
+    .from('general_order_participants')
+    .select(`
+      total_amount,
+      users!general_order_participants_user_id_fkey(full_name, email),
+      general_order_items(quantity, unit_price, products!general_order_items_product_id_fkey(name))
+    `)
+    .eq('general_order_id', orderId);
+    
+  if (!participantsError && participants) {
+    const participantsList = participants.map(p => `
+      <div style="margin: 10px 0; padding: 10px; border: 1px solid #ddd;">
+        <strong>${p.users?.full_name || 'משתמש'}</strong> - ₪${p.total_amount}
+        ${p.general_order_items?.map(item => `
+          <div style="margin-left: 20px;">• ${item.products?.name} x${item.quantity} (₪${item.unit_price})</div>
+        `).join('') || ''}
+      </div>
+    `).join('');
+    
+    orderData.participantsList = participantsList;
+    orderData.orderSummary = `סה"כ ${participants.length} משתתפים, בסכום כולל של ₪${orderData.totalAmount}`;
+  }
+  
+  orderData.triggerType = triggerType;
+  
+  // Generate PDF attachments ONLY for admin users
+  if (isAdminRecipient) {
+    try {
+      console.log('🔐 Admin recipient detected - generating PDF reports for general order summary...');
+      
+      // Generate admin PDF report
+      const adminPdfResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/generate-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: orderId, reportType: 'admin' })
+      });
+      
+      // Generate supplier PDF report
+      const supplierPdfResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/generate-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: orderId, reportType: 'supplier' })
+      });
+      
+      if (adminPdfResponse.ok && supplierPdfResponse.ok) {
+        const adminPdfBuffer = await adminPdfResponse.arrayBuffer();
+        const supplierPdfBuffer = await supplierPdfResponse.arrayBuffer();
+        
+        const dateStr = new Date().toISOString().split('T')[0];
+        
+        orderData.attachments = [
+          {
+            filename: `admin_report_${dateStr}.pdf`,
+            content: Buffer.from(adminPdfBuffer),
+            contentType: 'application/pdf'
+          },
+          {
+            filename: `supplier_report_${dateStr}.pdf`,
+            content: Buffer.from(supplierPdfBuffer),
+            contentType: 'application/pdf'
+          }
+        ];
+        
+        console.log('✅ PDF reports generated successfully for admin user');
+      } else {
+        console.log('❌ Failed to generate PDF reports, sending summary without attachments');
+        orderData.attachments = [];
+      }
+    } catch (pdfError) {
+      console.error('Error generating PDF reports:', pdfError);
+      orderData.attachments = [];
+    }
+  } else {
+    console.log('👤 Regular user recipient - no PDF attachments will be included');
+    orderData.attachments = [];
+  }
+  
+  return orderData;
+}
+
+// Parse reminder data
+async function parseGeneralOrderReminderData(emailBody, templateType) {
+  const reminderMatch = emailBody.match(new RegExp(`${templateType}:(.+)`));
+  if (!reminderMatch) {
+    throw new Error(`Invalid ${templateType} format`);
+  }
+  
+  const orderId = reminderMatch[1];
+  return await parseGeneralOrderData(`${templateType}:${orderId}`, templateType);
+}
+
+async function processGeneralOrderOpenedNotification(emailLog) {
+  // Parse format: GENERAL_ORDER_OPENED:orderId
+  const orderIdMatch = emailLog.body.match(/GENERAL_ORDER_OPENED:(.+)/);
+  if (!orderIdMatch) {
+    throw new Error('Invalid general order opened notification format');
+  }
+  
+  const orderId = orderIdMatch[1];
+  
+  try {
+    // Get order details
+    const { data: orderData, error: orderError } = await supabase
+      .from('general_orders')
+      .select('*')
+      .eq('id', orderId)
+      .single();
+      
+    if (orderError || !orderData) {
+      throw new Error('General order not found');
+    }
+    
+    // Create admin notification email
+    const subject = `🔔 הזמנה קבוצתית חדשה נפתחה - ${orderData.title}`;
+    const htmlContent = `
+      <div dir="rtl" style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); color: white; padding: 20px; text-align: center;">
+          <h1 style="margin: 0;">🌬️ Vapes Shop - התראת מנהל</h1>
+          <p style="margin: 10px 0 0 0;">הזמנה קבוצתית חדשה נפתחה</p>
+        </div>
+        
+        <div style="padding: 20px;">
+          <h2>הזמנה קבוצתית חדשה נפתחה! 🎉</h2>
+          
+          <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; border-right: 4px solid #f97316;">
+            <h3 style="color: #f97316; margin-top: 0;">פרטי ההזמנה:</h3>
+            <p><strong>כותרת:</strong> ${orderData.title}</p>
+            <p><strong>מספר הזמנה:</strong> ${orderData.id.substring(0, 8)}</p>
+            <p><strong>תאריך פתיחה:</strong> ${new Date().toLocaleDateString('he-IL')}</p>
+            <p><strong>סטטוס:</strong> ${orderData.status === 'open' ? '🟢 פתוחה' : orderData.status}</p>
+            ${orderData.description ? `<p><strong>תיאור:</strong> ${orderData.description}</p>` : ''}
+          </div>
+          
+          <div style="margin: 20px 0; text-align: center;">
+            <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/admin" 
+               style="display: inline-block; background-color: #f97316; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
+              צפה בפאנל המנהל
+            </a>
+          </div>
+        </div>
+        
+        <div style="background-color: #f3f4f6; padding: 15px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">
+            התראה אוטומטית ממערכת Vapes Shop
+          </p>
+        </div>
+      </div>
+    `;
+    
+    const mailOptions = {
+      from: SENDER_EMAIL,
+      to: emailLog.recipient_email,
+      subject: subject,
+      html: htmlContent
+    };
+    
+    const emailResult = await sendEmailWithProviders(mailOptions);
+    console.log(`General order opened notification sent via ${emailResult.service} to ${emailLog.recipient_email}`);
+    
+    // Mark as sent
+    await supabase
+      .from('email_logs')
+      .update({
+        status: 'sent',
+        sent_at: new Date().toISOString()
+      })
+      .eq('id', emailLog.id);
+    
+    return emailResult;
+    
+  } catch (error) {
+    console.error('Error processing general order opened notification:', error);
+    throw error;
+  }
 }
 
 async function processSystemNotification(emailLog) {
@@ -194,27 +614,63 @@ async function processOrderConfirmation(emailLog) {
   const participantId = parts[1];
   const generalOrderId = parts[2];
   
-  // First try to get participant details (new format)
+  // First try to get participant details - use simpler query without complex joins
   let { data: participant, error: participantError } = await supabase
     .from('general_order_participants')
-    .select(`
-      id,
-      user_id,
-      total_amount,
-      created_at,
-      user:user_id(full_name, email),
-      general_order:general_order_id(id, title, description, deadline),
-      order_items:general_order_items(
-        id,
-        product_id,
-        quantity,
-        unit_price,
-        total_price,
-        product:product_id(name, description, price)
-      )
-    `)
+    .select('*')
     .eq('id', participantId)
     .single();
+
+  if (!participantError && participant) {
+    // Get user data separately
+    const { data: userData } = await supabase
+      .from('users')
+      .select('full_name, email')
+      .eq('id', participant.user_id)
+      .single();
+
+    // Get general order data separately  
+    const { data: generalOrderData } = await supabase
+      .from('general_orders')
+      .select('id, title, description, deadline')
+      .eq('id', participant.general_order_id)
+      .single();
+
+    // Get order items with products separately
+    const { data: orderItemsData } = await supabase
+      .from('general_order_items')
+      .select('id, product_id, quantity, unit_price, total_price')
+      .eq('general_order_participant_id', participant.id);
+
+    // Get product details for each item
+    const itemsWithProducts = [];
+    for (const item of orderItemsData || []) {
+      const { data: productData } = await supabase
+        .from('products')
+        .select('name, description, price')
+        .eq('id', item.product_id)
+        .single();
+      
+      itemsWithProducts.push({
+        ...item,
+        product: productData
+      });
+    }
+
+    // Convert to expected format
+    participant = {
+      id: participant.id,
+      user_id: participant.user_id,
+      total_amount: participant.total_amount,
+      created_at: participant.created_at,
+      user: userData,
+      general_order: generalOrderData,
+      order_items: itemsWithProducts
+    };
+  } else {
+    console.log('Participant not found in general_order_participants, trying old format with orders table...');
+    participantError = true; // Force fallback
+  }
 
   // If participant not found, try old format (order ID)
   if (participantError || !participant) {
@@ -337,20 +793,58 @@ async function processOrderConfirmation(emailLog) {
     `;
   }
 
-  // Replace template placeholders
-  const subject = template.subject_template
-    .replace('{{order_title}}', participant.general_order.title);
+  // Debug logging
+  console.log('Order confirmation template data:', {
+    customerName: participant.user?.full_name,
+    orderTitle: participant.general_order?.title,
+    orderDescription: participant.general_order?.description,
+    orderDeadline: participant.general_order?.deadline,
+    orderId: participant.id,
+    totalAmount: participant.total_amount,
+    totalItems: totalItems
+  });
 
-  const htmlBody = template.body_template
-    .replace(/{{customer_name}}/g, participant.user.full_name)
-    .replace(/{{order_title}}/g, participant.general_order.title)
-    .replace(/{{order_description}}/g, participant.general_order.description || 'ללא תיאור')
-    .replace(/{{order_deadline}}/g, new Date(participant.general_order.deadline).toLocaleString('he-IL'))
-    .replace(/{{order_id}}/g, participant.id)
-    .replace(/{{order_items}}/g, orderItemsHtml)
-    .replace(/{{total_amount}}/g, participant.total_amount)
-    .replace(/{{total_items}}/g, totalItems)
-    .replace(/{{shop_url}}/g, `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/shop`);
+  // Replace template placeholders with extensive logging
+  console.log('🔄 Starting template replacement...');
+  
+  const subject = template.subject_template
+    .replace(/{{order_title}}/g, participant.general_order?.title || 'הזמנה קבוצתית');
+
+  console.log('Subject after replacement:', subject);
+
+  let htmlBody = template.body_template;
+  
+  // Log original template snippet
+  console.log('Original template snippet:', htmlBody.substring(0, 200) + '...');
+  
+  // Replace variables one by one with logging
+  const replacements = {
+    '{{customer_name}}': participant.user?.full_name || 'לקוח יקר',
+    '{{order_title}}': participant.general_order?.title || 'הזמנה קבוצתית',
+    '{{order_description}}': participant.general_order?.description || participant.general_order?.title || 'ללא תיאור',
+    '{{order_deadline}}': participant.general_order?.deadline ? new Date(participant.general_order?.deadline).toLocaleString('he-IL') : 'לא הוגדר',
+    '{{order_id}}': participant.id || 'לא זמין',
+    '{{order_items}}': orderItemsHtml,
+    '{{total_amount}}': participant.total_amount || '0',
+    '{{total_items}}': totalItems.toString(),
+    '{{shop_url}}': `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/shop`,
+    '{{current_date}}': new Date().toLocaleDateString('he-IL'),
+    '{{current_year}}': new Date().getFullYear().toString()
+  };
+  
+  console.log('Replacement values:', replacements);
+  
+  Object.keys(replacements).forEach(key => {
+    const oldHtml = htmlBody;
+    htmlBody = htmlBody.replace(new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), replacements[key]);
+    if (oldHtml !== htmlBody) {
+      console.log(`✅ Replaced ${key} with: "${replacements[key]}"`);
+    } else if (oldHtml.includes(key)) {
+      console.log(`❌ Failed to replace ${key} - still present in template`);
+    }
+  });
+  
+  console.log('Final template snippet:', htmlBody.substring(0, 200) + '...');
 
   const mailOptions = {
     from: SENDER_EMAIL,
