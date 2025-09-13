@@ -912,7 +912,7 @@ async function sendOrderOpenedNotifications(body) {
       html: htmlBody
     };
 
-    await transporter.sendMail(mailOptions);
+    await sendEmailWithProviders(mailOptions);
   }
 
   // Mark the system notification as sent
@@ -990,7 +990,7 @@ async function sendReminderNotifications(body, reminderType) {
       html: htmlBody
     };
 
-    await transporter.sendMail(mailOptions);
+    await sendEmailWithProviders(mailOptions);
   }
 
   // Mark the system notification as sent
@@ -1094,7 +1094,7 @@ async function sendOrderClosedNotifications(body) {
       html: htmlBody
     };
 
-    await transporter.sendMail(mailOptions);
+    await sendEmailWithProviders(mailOptions);
   }
 
   // Generate and send PDF reports to admin users only
@@ -1161,7 +1161,7 @@ async function sendOrderClosedNotifications(body) {
             ]
           };
 
-          await transporter.sendMail(adminMailOptions);
+          await sendEmailWithProviders(adminMailOptions);
           console.log(`PDF reports sent to admin: ${admin.email}`);
         }
       } else {
@@ -1416,7 +1416,7 @@ async function sendGeneralOrderSummary(body) {
     };
 
     try {
-      await transporter.sendMail(mailOptions);
+      await sendEmailWithProviders(mailOptions);
       console.log(`General order summary sent to admin: ${admin.email}`);
     } catch (sendError) {
       console.error(`Failed to send general order summary to ${admin.email}:`, sendError);

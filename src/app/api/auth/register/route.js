@@ -477,7 +477,7 @@ function generateWelcomeEmailTemplate(user) {
         <div class="container">
             <div class="header">
                 <span class="welcome-icon">🎉</span>
-                <h1>ברוכים הבאים להוייפ שופ!</h1>
+                <h1>ברוכים הבאים לוייפ שופ!</h1>
                 <p style="font-size: 18px; margin: 10px 0 0 0; opacity: 0.9;">החנות המובילה למוצרי ויפינג באיכות גבוהה</p>
             </div>
             
