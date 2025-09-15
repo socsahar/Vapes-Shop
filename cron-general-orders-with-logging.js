@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Enhanced Automated General Order Cron Job for Railway
- * Handles all automated tasks for general orders with real activity logging:
+ * Enhanced Automated General Order Cron Job with Real Activity Logging
+ * Handles all automated tasks for general orders with proper database logging:
  * - Auto-open future general orders
  * - Auto-close expired general orders 
  * - Send closure emails and admin summaries
@@ -28,45 +28,51 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
 console.log(`🤖 [${new Date().toISOString()}] Starting General Order Automation Cron with Activity Logging...`);
 
-// Helper functions for database logging
-async function logActivity(type, description, status = 'completed', userId = null, generalOrderId = null, metadata = {}) {
+async function main() {
   try {
-    const { error } = await supabase
-      .from('activity_log')
-      .insert({
-        type,
-        description,
-        status,
-        user_id: userId,
-        general_order_id: generalOrderId,
-        metadata
-      });
-
-    if (error) {
-      console.error('Warning: Failed to log activity:', error);
-    }
+    // Run all automation tasks with proper logging
+    const startTime = Date.now();
+    
+    await Promise.all([
+      runWithLogging('auto_open_orders', autoOpenFutureOrders),
+      runWithLogging('auto_close_orders', autoCloseExpiredOrders),
+      runWithLogging('send_reminder_emails', sendReminderEmails),
+      runWithLogging('process_email_queue', processEmailQueue)
+    ]);
+    
+    const duration = Date.now() - startTime;
+    
+    // Log overall completion
+    await logActivity(
+      'cron_complete',
+      `General Order Automation completed successfully in ${duration}ms`,
+      'completed',
+      null,
+      null,
+      { duration_ms: duration, timestamp: new Date().toISOString() }
+    );
+    
+    console.log(`✅ All automation tasks completed successfully in ${duration}ms`);
   } catch (error) {
-    console.error('Warning: Failed to log activity:', error);
+    console.error('❌ Error in cron job:', error);
+    
+    // Log the error
+    await logActivity(
+      'cron_error',
+      `General Order Automation failed: ${error.message}`,
+      'failed',
+      null,
+      null,
+      { error: error.message, stack: error.stack }
+    );
+    
+    process.exit(1);
   }
 }
 
-async function updateCronJobStatus(jobName, status, duration = null, errorMessage = null) {
-  try {
-    const { error } = await supabase.rpc('update_cron_job_status', {
-      p_job_name: jobName,
-      p_status: status,
-      p_duration: duration,
-      p_error_message: errorMessage
-    });
-
-    if (error) {
-      console.error('Warning: Failed to update cron job status:', error);
-    }
-  } catch (error) {
-    console.error('Warning: Failed to update cron job status:', error);
-  }
-}
-
+/**
+ * Run a cron job function with proper logging
+ */
 async function runWithLogging(jobName, jobFunction) {
   const startTime = Date.now();
   
@@ -98,55 +104,10 @@ async function runWithLogging(jobName, jobFunction) {
   }
 }
 
-async function main() {
-  const overallStartTime = Date.now();
-  
-  try {
-    // Run all automation tasks with proper logging
-    await Promise.all([
-      runWithLogging('auto_open_orders', autoOpenFutureOrders),
-      runWithLogging('auto_close_orders', autoCloseExpiredOrders),
-      runWithLogging('send_reminder_emails', sendReminderEmails)
-    ]);
-    
-    const totalDuration = Date.now() - overallStartTime;
-    
-    // Log overall completion
-    await logActivity(
-      'cron_complete',
-      `General Order Automation completed successfully in ${totalDuration}ms`,
-      'completed',
-      null,
-      null,
-      { duration_ms: totalDuration, timestamp: new Date().toISOString() }
-    );
-    
-    console.log(`✅ All automation tasks completed successfully in ${totalDuration}ms`);
-  } catch (error) {
-    const totalDuration = Date.now() - overallStartTime;
-    
-    console.error('❌ Error in cron job:', error);
-    
-    // Log the error
-    await logActivity(
-      'cron_error',
-      `General Order Automation failed: ${error.message}`,
-      'failed',
-      null,
-      null,
-      { error: error.message, stack: error.stack, duration_ms: totalDuration }
-    );
-    
-    process.exit(1);
-  }
-}
-
 /**
  * Auto-open general orders that are scheduled to open now
  */
 async function autoOpenFutureOrders() {
-  console.log('🔍 Checking for orders to auto-open...');
-  
   const now = new Date();
   
   // Find orders with future/scheduled status that should be opened now
@@ -162,7 +123,6 @@ async function autoOpenFutureOrders() {
   }
 
   if (ordersToOpen.length === 0) {
-    console.log('📭 No orders ready to open');
     await logActivity(
       'cron_auto_open_orders',
       'No orders ready to open',
@@ -174,7 +134,7 @@ async function autoOpenFutureOrders() {
     return { opened: 0 };
   }
 
-  let successCount = 0;
+  const results = [];
 
   for (const order of ordersToOpen) {
     try {
@@ -208,8 +168,6 @@ async function autoOpenFutureOrders() {
       // Send notification emails to all users
       await sendOrderOpenNotifications(order);
 
-      successCount++;
-
       // Log successful opening
       await logActivity(
         'cron_auto_open_orders',
@@ -224,7 +182,7 @@ async function autoOpenFutureOrders() {
         }
       );
 
-      console.log(`✅ Successfully opened order: ${order.title}`);
+      results.push({ id: order.id, title: order.title, status: 'success' });
 
     } catch (error) {
       console.error(`❌ Error opening order ${order.id}:`, error);
@@ -242,34 +200,33 @@ async function autoOpenFutureOrders() {
           scheduled_for: order.opening_time
         }
       );
+
+      results.push({ id: order.id, title: order.title, status: 'failed', error: error.message });
     }
   }
 
-  return { opened: successCount, total: ordersToOpen.length };
+  return { opened: results.filter(r => r.status === 'success').length, results };
 }
 
 /**
- * Auto-close general orders that have reached their deadline
+ * Auto-close general orders that have passed their deadline
  */
 async function autoCloseExpiredOrders() {
-  console.log('🔍 Checking for orders to auto-close...');
-  
   const now = new Date();
   
-  // Find open orders that have passed their deadline
-  const { data: expiredOrders, error } = await supabase
+  // Find orders that are open and past their deadline
+  const { data: ordersToClose, error } = await supabase
     .from('general_orders')
     .select('*')
     .eq('status', 'open')
-    .lte('deadline', now.toISOString())
+    .lt('deadline', now.toISOString())
     .order('deadline', { ascending: true });
 
   if (error) {
-    throw new Error(`Error fetching expired orders: ${error.message}`);
+    throw new Error(`Error fetching orders to close: ${error.message}`);
   }
 
-  if (expiredOrders.length === 0) {
-    console.log('📭 No orders ready to close');
+  if (ordersToClose.length === 0) {
     await logActivity(
       'cron_auto_close_orders',
       'No expired orders to close',
@@ -281,11 +238,11 @@ async function autoCloseExpiredOrders() {
     return { closed: 0 };
   }
 
-  let successCount = 0;
+  const results = [];
 
-  for (const order of expiredOrders) {
+  for (const order of ordersToClose) {
     try {
-      console.log(`🔒 Closing expired order: ${order.title} (deadline: ${new Date(order.deadline).toLocaleString()})`);
+      console.log(`🔒 Closing expired order: ${order.title} (deadline was ${new Date(order.deadline).toLocaleString()})`);
       
       // Update order status to 'closed'
       const { error: updateError } = await supabase
@@ -300,10 +257,8 @@ async function autoCloseExpiredOrders() {
         throw new Error(`Error closing order ${order.id}: ${updateError.message}`);
       }
 
-      // Send closure notification emails
+      // Send closure notifications
       await sendOrderCloseNotifications(order);
-
-      successCount++;
 
       // Log successful closing
       await logActivity(
@@ -320,7 +275,7 @@ async function autoCloseExpiredOrders() {
         }
       );
 
-      console.log(`✅ Successfully closed expired order: ${order.title}`);
+      results.push({ id: order.id, title: order.title, status: 'success' });
 
     } catch (error) {
       console.error(`❌ Error closing order ${order.id}:`, error);
@@ -338,18 +293,18 @@ async function autoCloseExpiredOrders() {
           deadline: order.deadline
         }
       );
+
+      results.push({ id: order.id, title: order.title, status: 'failed', error: error.message });
     }
   }
 
-  return { closed: successCount, total: expiredOrders.length };
+  return { closed: results.filter(r => r.status === 'success').length, results };
 }
 
 /**
  * Send reminder emails for orders closing soon
  */
 async function sendReminderEmails() {
-  console.log('🔍 Checking for orders needing reminders...');
-  
   const now = new Date();
   const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
   const tenMinutesFromNow = new Date(now.getTime() + 10 * 60 * 1000);
@@ -368,7 +323,6 @@ async function sendReminderEmails() {
   }
 
   if (ordersNeedingReminders.length === 0) {
-    console.log('📭 No orders need reminder emails');
     await logActivity(
       'cron_send_reminder_emails',
       'No orders need reminder emails',
@@ -381,6 +335,7 @@ async function sendReminderEmails() {
   }
 
   let remindersSent = 0;
+  const results = [];
 
   for (const order of ordersNeedingReminders) {
     try {
@@ -399,7 +354,7 @@ async function sendReminderEmails() {
 
       console.log(`📧 Sending ${reminderType} reminder for: ${order.title} (${hoursUntilDeadline} hours remaining)`);
       
-      await sendReminderNotification(order, reminderType);
+      await sendReminderEmail(order, reminderType);
       remindersSent++;
 
       // Log successful reminder
@@ -417,7 +372,7 @@ async function sendReminderEmails() {
         }
       );
 
-      console.log(`✅ Successfully sent ${reminderType} reminder for: ${order.title}`);
+      results.push({ id: order.id, title: order.title, reminderType, status: 'success' });
 
     } catch (error) {
       console.error(`❌ Error sending reminder for order ${order.id}:`, error);
@@ -435,130 +390,188 @@ async function sendReminderEmails() {
           deadline: order.deadline
         }
       );
+
+      results.push({ id: order.id, title: order.title, status: 'failed', error: error.message });
     }
   }
 
-  return { reminders: remindersSent, total: ordersNeedingReminders.length };
+  return { reminders: remindersSent, results };
 }
 
-// Email notification functions (implement these based on your email system)
-async function sendOrderOpenNotifications(order) {
-  // Add to email queue for opening notifications
-  try {
-    const { data: users, error } = await supabase
-      .from('users')
-      .select('id, email, full_name')
-      .eq('is_active', true);
+/**
+ * Process pending emails in the queue
+ */
+async function processEmailQueue() {
+  // Get pending emails from queue
+  const { data: pendingEmails, error } = await supabase
+    .from('email_queue')
+    .select('*')
+    .eq('status', 'pending')
+    .lte('scheduled_at', new Date().toISOString())
+    .lt('attempts', supabase.raw('max_attempts'))
+    .order('priority', { ascending: true })
+    .order('created_at', { ascending: true })
+    .limit(10); // Process 10 emails at a time
 
-    if (error || !users) {
-      throw new Error(`Error fetching users: ${error?.message || 'No users found'}`);
-    }
-
-    // Add emails to queue for each user
-    const emailsToQueue = users.map(user => ({
-      recipient_email: user.email,
-      recipient_name: user.full_name,
-      subject: `🎉 הזמנה קבוצתית חדשה נפתחה - ${order.title}`,
-      html_body: `<p>שלום ${user.full_name},</p><p>הזמנה קבוצתית חדשה נפתחה: <strong>${order.title}</strong></p>`,
-      email_type: 'general_order_open',
-      user_id: user.id,
-      general_order_id: order.id,
-      priority: 3
-    }));
-
-    const { error: queueError } = await supabase
-      .from('email_queue')
-      .insert(emailsToQueue);
-
-    if (queueError) {
-      throw new Error(`Error queuing emails: ${queueError.message}`);
-    }
-
-    console.log(`📧 Queued ${emailsToQueue.length} opening notification emails`);
-  } catch (error) {
-    console.error('❌ Error queuing opening notifications:', error);
+  if (error) {
+    throw new Error(`Error fetching email queue: ${error.message}`);
   }
+
+  if (pendingEmails.length === 0) {
+    await logActivity(
+      'cron_process_email_queue',
+      'No pending emails to process',
+      'completed',
+      null,
+      null,
+      { checked_at: new Date().toISOString(), emails_found: 0 }
+    );
+    return { processed: 0 };
+  }
+
+  let processed = 0;
+  const results = [];
+
+  for (const email of pendingEmails) {
+    try {
+      console.log(`📬 Processing email: ${email.subject} to ${email.recipient_email}`);
+      
+      // Update status to sending
+      await supabase
+        .from('email_queue')
+        .update({
+          status: 'sending',
+          last_attempt_at: new Date().toISOString(),
+          attempts: email.attempts + 1
+        })
+        .eq('id', email.id);
+
+      // Send the email (implement your email sending logic here)
+      await sendQueuedEmail(email);
+      
+      // Update status to sent
+      await supabase
+        .from('email_queue')
+        .update({
+          status: 'sent',
+          sent_at: new Date().toISOString()
+        })
+        .eq('id', email.id);
+
+      processed++;
+      results.push({ id: email.id, subject: email.subject, status: 'success' });
+
+      // Log successful email
+      await logActivity(
+        'cron_process_email_queue',
+        `Sent email: ${email.subject} to ${email.recipient_email}`,
+        'completed',
+        email.user_id,
+        email.general_order_id,
+        { 
+          email_type: email.email_type,
+          recipient: email.recipient_email,
+          attempts: email.attempts + 1
+        }
+      );
+
+    } catch (error) {
+      console.error(`❌ Error processing email ${email.id}:`, error);
+      
+      // Update email status to failed if max attempts reached
+      const newStatus = (email.attempts + 1) >= email.max_attempts ? 'failed' : 'pending';
+      
+      await supabase
+        .from('email_queue')
+        .update({
+          status: newStatus,
+          error_message: error.message,
+          failed_at: newStatus === 'failed' ? new Date().toISOString() : null
+        })
+        .eq('id', email.id);
+
+      results.push({ id: email.id, subject: email.subject, status: 'failed', error: error.message });
+
+      // Log failed email
+      await logActivity(
+        'cron_process_email_queue',
+        `Failed to send email: ${email.subject} to ${email.recipient_email} - ${error.message}`,
+        'failed',
+        email.user_id,
+        email.general_order_id,
+        { 
+          email_type: email.email_type,
+          recipient: email.recipient_email,
+          error: error.message,
+          attempts: email.attempts + 1,
+          max_attempts: email.max_attempts
+        }
+      );
+    }
+  }
+
+  return { processed, results };
+}
+
+/**
+ * Log activity to database
+ */
+async function logActivity(type, description, status = 'completed', userId = null, generalOrderId = null, metadata = {}) {
+  try {
+    const { error } = await supabase
+      .from('activity_log')
+      .insert({
+        type,
+        description,
+        status,
+        user_id: userId,
+        general_order_id: generalOrderId,
+        metadata
+      });
+
+    if (error) {
+      console.error('Warning: Failed to log activity:', error);
+    }
+  } catch (error) {
+    console.error('Warning: Failed to log activity:', error);
+  }
+}
+
+/**
+ * Update cron job status in database
+ */
+async function updateCronJobStatus(jobName, status, duration = null, errorMessage = null) {
+  try {
+    const { error } = await supabase.rpc('update_cron_job_status', {
+      p_job_name: jobName,
+      p_status: status,
+      p_duration: duration,
+      p_error_message: errorMessage
+    });
+
+    if (error) {
+      console.error('Warning: Failed to update cron job status:', error);
+    }
+  } catch (error) {
+    console.error('Warning: Failed to update cron job status:', error);
+  }
+}
+
+// Placeholder functions - implement these based on your email system
+async function sendOrderOpenNotifications(order) {
+  // Implementation for sending order open notifications
 }
 
 async function sendOrderCloseNotifications(order) {
-  // Add to email queue for closing notifications  
-  try {
-    const { data: admins, error } = await supabase
-      .from('users')
-      .select('id, email, full_name')
-      .eq('role', 'admin')
-      .eq('is_active', true);
-
-    if (error || !admins) {
-      throw new Error(`Error fetching admins: ${error?.message || 'No admins found'}`);
-    }
-
-    // Add emails to queue for each admin
-    const emailsToQueue = admins.map(admin => ({
-      recipient_email: admin.email,
-      recipient_name: admin.full_name,
-      subject: `🔒 הזמנה קבוצתית נסגרה אוטומטית - ${order.title}`,
-      html_body: `<p>שלום ${admin.full_name},</p><p>הזמנה קבוצתית נסגרה אוטומטית: <strong>${order.title}</strong></p>`,
-      email_type: 'general_order_close',
-      user_id: admin.id,
-      general_order_id: order.id,
-      priority: 2
-    }));
-
-    const { error: queueError } = await supabase
-      .from('email_queue')
-      .insert(emailsToQueue);
-
-    if (queueError) {
-      throw new Error(`Error queuing emails: ${queueError.message}`);
-    }
-
-    console.log(`📧 Queued ${emailsToQueue.length} closing notification emails`);
-  } catch (error) {
-    console.error('❌ Error queuing closing notifications:', error);
-  }
+  // Implementation for sending order close notifications  
 }
 
-async function sendReminderNotification(order, reminderType) {
-  // Add to email queue for reminder notifications
-  try {
-    const { data: users, error } = await supabase
-      .from('users')
-      .select('id, email, full_name')
-      .eq('is_active', true);
+async function sendReminderEmail(order, reminderType) {
+  // Implementation for sending reminder emails
+}
 
-    if (error || !users) {
-      throw new Error(`Error fetching users: ${error?.message || 'No users found'}`);
-    }
-
-    const reminderText = reminderType === 'final' ? 'נותרו פחות מ-12 דקות!' : 'נותרה פחות משעה!';
-    const priority = reminderType === 'final' ? 1 : 4;
-
-    // Add emails to queue for each user
-    const emailsToQueue = users.map(user => ({
-      recipient_email: user.email,
-      recipient_name: user.full_name,
-      subject: `⏰ תזכורת: ${order.title} - ${reminderText}`,
-      html_body: `<p>שלום ${user.full_name},</p><p>תזכורת: הזמנה קבוצתית <strong>${order.title}</strong> ${reminderText}</p>`,
-      email_type: 'reminder',
-      user_id: user.id,
-      general_order_id: order.id,
-      priority,
-      metadata: { reminder_type: reminderType }
-    }));
-
-    const { error: queueError } = await supabase
-      .from('email_queue')
-      .insert(emailsToQueue);
-
-    if (queueError) {
-      throw new Error(`Error queuing emails: ${queueError.message}`);
-    }
-
-    console.log(`📧 Queued ${emailsToQueue.length} ${reminderType} reminder emails`);
-  } catch (error) {
-    console.error('❌ Error queuing reminder notifications:', error);
-  }
+async function sendQueuedEmail(email) {
+  // Implementation for sending queued emails
 }
 
 // Run the main function

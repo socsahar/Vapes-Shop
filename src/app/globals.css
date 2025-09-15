@@ -933,3 +933,374 @@ html {
   animation: glow 2s ease-in-out infinite;
 }
 
+/* System Status Styles */
+.system-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.system-status-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.system-status-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.status-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 1.5rem 0.75rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.status-card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.status-card-title h4 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.status-icon {
+  font-size: 1.5rem;
+}
+
+.status-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: center;
+  min-width: 60px;
+}
+
+.status-badge.active {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.status-badge.error {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.status-badge.unknown {
+  background-color: #f3f4f6;
+  color: #6b7280;
+}
+
+.status-card-content {
+  padding: 1.5rem;
+}
+
+.status-info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.status-label {
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.status-value {
+  font-size: 0.875rem;
+  color: #374151;
+  font-weight: 600;
+}
+
+.status-scheduled-items,
+.status-expired-items {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: #f9fafb;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+
+.scheduled-item,
+.expired-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.scheduled-item:last-child,
+.expired-item:last-child {
+  border-bottom: none;
+}
+
+.scheduled-title,
+.expired-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.scheduled-time,
+.expired-time {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+/* Email Status Styles */
+.email-status-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.email-stat-card {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: transform 0.2s ease;
+}
+
+.email-stat-card:hover {
+  transform: translateY(-2px);
+}
+
+.email-stat-card.sent {
+  border-left: 4px solid #3b82f6;
+}
+
+.email-stat-card.delivered {
+  border-left: 4px solid #10b981;
+}
+
+.email-stat-card.failed {
+  border-left: 4px solid #ef4444;
+}
+
+.email-stat-card.weekly {
+  border-left: 4px solid #8b5cf6;
+}
+
+.email-stat-icon {
+  font-size: 2rem;
+}
+
+.email-stat-content {
+  flex: 1;
+}
+
+.email-stat-number {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #374151;
+  line-height: 1;
+}
+
+.email-stat-label {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+/* Recent Emails */
+.recent-emails-section {
+  margin-top: 2rem;
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  border: 1px solid #e5e7eb;
+}
+
+.recent-emails-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 1rem;
+}
+
+.recent-emails-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.email-item {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 1rem;
+}
+
+.email-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.email-type {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.email-type-icon {
+  font-size: 1rem;
+}
+
+.email-type-text {
+  font-weight: 500;
+  color: #374151;
+}
+
+.email-status-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.email-status-badge.נשלח {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.email-status-badge.נמסר {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.email-status-badge.נכשל {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.email-item-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  font-size: 0.875rem;
+}
+
+.email-label {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.email-value {
+  color: #374151;
+}
+
+/* Email Queue */
+.email-queue-section {
+  margin-top: 1.5rem;
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  border: 1px solid #e5e7eb;
+}
+
+.email-queue-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 1rem;
+}
+
+.email-queue-stats {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.queue-stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.queue-stat-item.error .queue-stat-value {
+  color: #ef4444;
+}
+
+.queue-stat-label {
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.queue-stat-value {
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: #374151;
+}
+
+/* System Status Footer */
+.system-status-footer {
+  margin-top: 2rem;
+  padding: 1rem;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.auto-refresh-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  justify-content: center;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.refresh-indicator {
+  animation: spin 2s linear infinite;
+}
+
+.last-update {
+  font-weight: 500;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .system-status-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .email-status-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+  
+  .email-item-content {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  
+  .email-queue-stats {
+    flex-direction: column;
+    gap: 1rem;
+  }
+}
+

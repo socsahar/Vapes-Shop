@@ -89,6 +89,9 @@ export default function AdminPage() {
     });
     const [shopSettingsLoading, setShopSettingsLoading] = useState(false);
     const [showShopSettingsModal, setShowShopSettingsModal] = useState(false);
+    const [systemStatus, setSystemStatus] = useState(null);
+    const [systemStatusLoading, setSystemStatusLoading] = useState(false);
+    const [statusRefreshInterval, setStatusRefreshInterval] = useState(null);
     const router = useRouter();
 
     useEffect(() => {
@@ -1094,6 +1097,51 @@ export default function AdminPage() {
         }));
     };
 
+    const fetchSystemStatus = async (showLoader = true) => {
+        try {
+            if (showLoader) {
+                setSystemStatusLoading(true);
+            }
+            
+            const response = await fetch('/api/admin/system-status-real');
+            if (response.ok) {
+                const data = await response.json();
+                setSystemStatus(data.status);
+            } else {
+                console.error('Failed to fetch system status');
+                setSystemStatus(null);
+            }
+        } catch (error) {
+            console.error('Error fetching system status:', error);
+            setSystemStatus(null);
+        } finally {
+            if (showLoader) {
+                setSystemStatusLoading(false);
+            }
+        }
+    };
+
+    const startStatusAutoRefresh = () => {
+        // Clear existing interval
+        if (statusRefreshInterval) {
+            clearInterval(statusRefreshInterval);
+        }
+        
+        // Set up auto-refresh every 30 seconds for system status
+        const interval = setInterval(() => {
+            fetchSystemStatus(false); // Silent refresh
+        }, 30000);
+        
+        setStatusRefreshInterval(interval);
+    };
+
+    const stopStatusAutoRefresh = () => {
+        if (statusRefreshInterval) {
+            clearInterval(statusRefreshInterval);
+            setStatusRefreshInterval(null);
+        }
+    };
+
     const handleCloseGeneralOrderModal = () => {
         setShowGeneralOrderModal(false);
         setEditingGeneralOrder(null);
@@ -1137,8 +1185,23 @@ export default function AdminPage() {
             fetchAllOrders();
         } else if (activeTab === 'group-orders') {
             fetchGeneralOrders();
+        } else if (activeTab === 'system-status') {
+            fetchSystemStatus(true); // Initial load with spinner
+            startStatusAutoRefresh();
+        }
+        
+        // Clean up auto-refresh when leaving system-status tab
+        if (activeTab !== 'system-status') {
+            stopStatusAutoRefresh();
         }
     }, [activeTab]);
+
+    // Clean up intervals on component unmount
+    useEffect(() => {
+        return () => {
+            stopStatusAutoRefresh();
+        };
+    }, []);
 
     if (loading) {
         return (
@@ -1154,6 +1217,7 @@ export default function AdminPage() {
         { id: 'products', name: 'מוצרים', icon: '📦' },
         { id: 'orders', name: 'הזמנות', icon: '🛒' },
         { id: 'group-orders', name: 'הזמנות קבוצתיות', icon: '👥🛒' },
+        { id: 'system-status', name: 'סטטוס מערכת', icon: '🖥️' },
         { id: 'settings', name: 'הגדרות', icon: '⚙️' }
     ];
 
@@ -2055,6 +2119,317 @@ export default function AdminPage() {
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'system-status' && (
+                        <div className="admin-content">
+                            <div className="admin-page-header">
+                                <div>
+                                    <h2 className="admin-page-title">סטטוס מערכת</h2>
+                                    <p className="admin-page-subtitle">מעקב אחר cron jobs וסטטוס אימיילים</p>
+                                </div>
+                                <div className="admin-page-actions">
+                                    <button 
+                                        onClick={() => fetchSystemStatus(true)}
+                                        disabled={systemStatusLoading}
+                                        className="admin-btn-secondary"
+                                    >
+                                        {systemStatusLoading ? (
+                                            <span className="spinner-sm"></span>
+                                        ) : (
+                                            <span className="ml-2">🔄</span>
+                                        )}
+                                        רענן סטטוס
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            {systemStatusLoading ? (
+                                <div className="admin-loading">
+                                    <div className="spinner"></div>
+                                    <p>טוען סטטוס המערכת...</p>
+                                </div>
+                            ) : systemStatus ? (
+                                <div className="admin-section">
+                                    {/* Cron Jobs Status */}
+                                    <div className="admin-section">
+                                        <div className="admin-section-header">
+                                            <h3 className="admin-section-title">
+                                                <span className="admin-section-icon">🤖</span>
+                                                סטטוס Cron Jobs
+                                            </h3>
+                                            <p className="admin-section-subtitle">מעקב אחר הפעלת המשימות האוטומטיות</p>
+                                        </div>
+                                        
+                                        <div className="system-status-grid">
+                                            {/* Auto Order Opening */}
+                                            <div className="system-status-card">
+                                                <div className="status-card-header">
+                                                    <div className="status-card-title">
+                                                        <span className="status-icon">🔓</span>
+                                                        <h4>פתיחת הזמנות אוטומטית</h4>
+                                                    </div>
+                                                    <div className={`status-badge ${systemStatus.cronJobs?.autoOrderOpening?.status || 'unknown'}`}>
+                                                        {systemStatus.cronJobs?.autoOrderOpening?.status === 'active' ? 'פעיל' : 
+                                                         systemStatus.cronJobs?.autoOrderOpening?.status === 'error' ? 'שגיאה' : 'לא ידוע'}
+                                                    </div>
+                                                </div>
+                                                <div className="status-card-content">
+                                                    {systemStatus.cronJobs?.autoOrderOpening?.lastRun && (
+                                                        <div className="status-info-item">
+                                                            <span className="status-label">הרצה אחרונה:</span>
+                                                            <span className="status-value">
+                                                                {new Date(systemStatus.cronJobs.autoOrderOpening.lastRun).toLocaleString('he-IL')}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    <div className="status-info-item">
+                                                        <span className="status-label">הזמנות שעובדו:</span>
+                                                        <span className="status-value">{systemStatus.cronJobs?.autoOrderOpening?.totalProcessed || 0}</span>
+                                                    </div>
+                                                    {systemStatus.cronJobs?.autoOrderOpening?.nextScheduled && systemStatus.cronJobs.autoOrderOpening.nextScheduled.length > 0 && (
+                                                        <div className="status-scheduled-items">
+                                                            <span className="status-label">הזמנות מתוזמנות הבאות:</span>
+                                                            {systemStatus.cronJobs.autoOrderOpening.nextScheduled.map(order => (
+                                                                <div key={order.id} className="scheduled-item">
+                                                                    <span className="scheduled-title">{order.title}</span>
+                                                                    <span className="scheduled-time">
+                                                                        {new Date(order.scheduledFor).toLocaleString('he-IL')}
+                                                                    </span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Auto Order Closing */}
+                                            <div className="system-status-card">
+                                                <div className="status-card-header">
+                                                    <div className="status-card-title">
+                                                        <span className="status-icon">🔒</span>
+                                                        <h4>סגירת הזמנות אוטומטית</h4>
+                                                    </div>
+                                                    <div className={`status-badge ${systemStatus.cronJobs?.autoOrderClosing?.status || 'unknown'}`}>
+                                                        {systemStatus.cronJobs?.autoOrderClosing?.status === 'active' ? 'פעיל' : 
+                                                         systemStatus.cronJobs?.autoOrderClosing?.status === 'error' ? 'שגיאה' : 'לא ידוע'}
+                                                    </div>
+                                                </div>
+                                                <div className="status-card-content">
+                                                    {systemStatus.cronJobs?.autoOrderClosing?.lastRun && (
+                                                        <div className="status-info-item">
+                                                            <span className="status-label">הרצה אחרונה:</span>
+                                                            <span className="status-value">
+                                                                {new Date(systemStatus.cronJobs.autoOrderClosing.lastRun).toLocaleString('he-IL')}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    <div className="status-info-item">
+                                                        <span className="status-label">הזמנות שנסגרו:</span>
+                                                        <span className="status-value">{systemStatus.cronJobs?.autoOrderClosing?.totalProcessed || 0}</span>
+                                                    </div>
+                                                    {systemStatus.cronJobs?.autoOrderClosing?.expiredOrders && systemStatus.cronJobs.autoOrderClosing.expiredOrders.length > 0 && (
+                                                        <div className="status-expired-items">
+                                                            <span className="status-label">הזמנות פגות תוקף:</span>
+                                                            {systemStatus.cronJobs.autoOrderClosing.expiredOrders.map(order => (
+                                                                <div key={order.id} className="expired-item">
+                                                                    <span className="expired-title">{order.title}</span>
+                                                                    <span className="expired-time">
+                                                                        פג ב: {new Date(order.expiredAt).toLocaleString('he-IL')}
+                                                                    </span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Reminder Emails */}
+                                            <div className="system-status-card">
+                                                <div className="status-card-header">
+                                                    <div className="status-card-title">
+                                                        <span className="status-icon">⏰</span>
+                                                        <h4>אימיילי תזכורת</h4>
+                                                    </div>
+                                                    <div className={`status-badge ${systemStatus.cronJobs?.reminderEmails?.status || 'unknown'}`}>
+                                                        {systemStatus.cronJobs?.reminderEmails?.status === 'active' ? 'פעיל' : 
+                                                         systemStatus.cronJobs?.reminderEmails?.status === 'error' ? 'שגיאה' : 'לא ידוע'}
+                                                    </div>
+                                                </div>
+                                                <div className="status-card-content">
+                                                    {systemStatus.cronJobs?.reminderEmails?.lastRun && (
+                                                        <div className="status-info-item">
+                                                            <span className="status-label">הרצה אחרונה:</span>
+                                                            <span className="status-value">
+                                                                {new Date(systemStatus.cronJobs.reminderEmails.lastRun).toLocaleString('he-IL')}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    <div className="status-info-item">
+                                                        <span className="status-label">תזכורות שנשלחו:</span>
+                                                        <span className="status-value">{systemStatus.cronJobs?.reminderEmails?.remindersSent || 0}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Email Queue */}
+                                            <div className="system-status-card">
+                                                <div className="status-card-header">
+                                                    <div className="status-card-title">
+                                                        <span className="status-icon">📧</span>
+                                                        <h4>תור אימיילים</h4>
+                                                    </div>
+                                                    <div className={`status-badge ${systemStatus.cronJobs?.emailQueue?.status || 'unknown'}`}>
+                                                        {systemStatus.cronJobs?.emailQueue?.status === 'active' ? 'פעיל' : 
+                                                         systemStatus.cronJobs?.emailQueue?.status === 'error' ? 'שגיאה' : 'לא ידוע'}
+                                                    </div>
+                                                </div>
+                                                <div className="status-card-content">
+                                                    {systemStatus.cronJobs?.emailQueue?.lastRun && (
+                                                        <div className="status-info-item">
+                                                            <span className="status-label">הרצה אחרונה:</span>
+                                                            <span className="status-value">
+                                                                {new Date(systemStatus.cronJobs.emailQueue.lastRun).toLocaleString('he-IL')}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    <div className="status-info-item">
+                                                        <span className="status-label">אימיילים שעובדו:</span>
+                                                        <span className="status-value">{systemStatus.cronJobs?.emailQueue?.emailsProcessed || 0}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Email Status */}
+                                    <div className="admin-section">
+                                        <div className="admin-section-header">
+                                            <h3 className="admin-section-title">
+                                                <span className="admin-section-icon">📨</span>
+                                                סטטוס אימיילים
+                                            </h3>
+                                            <p className="admin-section-subtitle">מעקב אחר אימיילים שנשלחו ומצבם</p>
+                                        </div>
+                                        
+                                        {/* Email Summary */}
+                                        <div className="email-status-summary">
+                                            <div className="email-stat-card sent">
+                                                <div className="email-stat-icon">📤</div>
+                                                <div className="email-stat-content">
+                                                    <div className="email-stat-number">{systemStatus.emails?.summary?.totalSent24h || 0}</div>
+                                                    <div className="email-stat-label">נשלחו היום</div>
+                                                </div>
+                                            </div>
+                                            <div className="email-stat-card delivered">
+                                                <div className="email-stat-icon">✅</div>
+                                                <div className="email-stat-content">
+                                                    <div className="email-stat-number">{systemStatus.emails?.summary?.totalDelivered24h || 0}</div>
+                                                    <div className="email-stat-label">נמסרו היום</div>
+                                                </div>
+                                            </div>
+                                            <div className="email-stat-card failed">
+                                                <div className="email-stat-icon">❌</div>
+                                                <div className="email-stat-content">
+                                                    <div className="email-stat-number">{systemStatus.emails?.summary?.totalFailed24h || 0}</div>
+                                                    <div className="email-stat-label">נכשלו היום</div>
+                                                </div>
+                                            </div>
+                                            <div className="email-stat-card weekly">
+                                                <div className="email-stat-icon">📊</div>
+                                                <div className="email-stat-content">
+                                                    <div className="email-stat-number">{systemStatus.emails?.summary?.totalSent7d || 0}</div>
+                                                    <div className="email-stat-label">סה"כ השבוע</div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Recent Emails */}
+                                        {systemStatus.emails?.recentEmails && systemStatus.emails.recentEmails.length > 0 && (
+                                            <div className="recent-emails-section">
+                                                <h4 className="recent-emails-title">אימיילים אחרונים</h4>
+                                                <div className="recent-emails-list">
+                                                    {systemStatus.emails.recentEmails.map((email, index) => (
+                                                        <div key={email.id || index} className="email-item">
+                                                            <div className="email-item-header">
+                                                                <div className="email-type">
+                                                                    <span className="email-type-icon">
+                                                                        {email.type === 'איפוס סיסמה' && '🔑'}
+                                                                        {email.type === 'אישור הזמנה' && '📋'}
+                                                                        {email.type === 'תזכורת' && '⏰'}
+                                                                        {email.type === 'דוח סיכום' && '📊'}
+                                                                        {email.type === 'ברוכים הבאים' && '👋'}
+                                                                        {!['איפוס סיסמה', 'אישור הזמנה', 'תזכורת', 'דוח סיכום', 'ברוכים הבאים'].includes(email.type) && '📧'}
+                                                                    </span>
+                                                                    <span className="email-type-text">{email.type}</span>
+                                                                </div>
+                                                                <div className={`email-status-badge ${email.status}`}>
+                                                                    {email.status}
+                                                                </div>
+                                                            </div>
+                                                            <div className="email-item-content">
+                                                                <div className="email-recipient">
+                                                                    <span className="email-label">נמען:</span>
+                                                                    <span className="email-value">{email.recipient}</span>
+                                                                </div>
+                                                                <div className="email-timestamp">
+                                                                    <span className="email-label">זמן:</span>
+                                                                    <span className="email-value">
+                                                                        {new Date(email.timestamp).toLocaleString('he-IL')}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Email Queue Status */}
+                                        <div className="email-queue-section">
+                                            <h4 className="email-queue-title">מצב תור האימיילים</h4>
+                                            <div className="email-queue-stats">
+                                                <div className="queue-stat-item">
+                                                    <span className="queue-stat-label">ממתינים בתור:</span>
+                                                    <span className="queue-stat-value">{systemStatus.emails?.queue?.pending || 0}</span>
+                                                </div>
+                                                <div className="queue-stat-item">
+                                                    <span className="queue-stat-label">בעיבוד:</span>
+                                                    <span className="queue-stat-value">{systemStatus.emails?.queue?.processing || 0}</span>
+                                                </div>
+                                                <div className="queue-stat-item error">
+                                                    <span className="queue-stat-label">כשלונות:</span>
+                                                    <span className="queue-stat-value">{systemStatus.emails?.queue?.failed || 0}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Auto Refresh Info */}
+                                    <div className="system-status-footer">
+                                        <div className="auto-refresh-info">
+                                            <span className="refresh-indicator">🔄</span>
+                                            <span>רענון אוטומטי כל 30 שניות</span>
+                                            <span className="last-update">
+                                                עדכון אחרון: {new Date(systemStatus.lastUpdate).toLocaleTimeString('he-IL')}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="admin-empty-state">
+                                    <div className="admin-empty-icon">🖥️</div>
+                                    <p className="admin-empty-text">לא ניתן לטעון סטטוס המערכת</p>
+                                    <p className="admin-empty-subtext">בדוק את החיבור לשרת ונסה שוב</p>
+                                    <button 
+                                        onClick={() => fetchSystemStatus(true)}
+                                        className="admin-btn-primary mt-4"
+                                    >
+                                        🔄 נסה שוב
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
 
