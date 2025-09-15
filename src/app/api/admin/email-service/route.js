@@ -710,6 +710,10 @@ async function processSystemNotification(emailLog) {
     return await sendGeneralOrderSummary(body);
   }
 
+  if (recipient_email === 'SYSTEM_SUPPLIER_REPORT') {
+    return await sendSupplierReport(body);
+  }
+
   throw new Error(`Unknown system notification type: ${recipient_email}`);
 }
 
@@ -1544,5 +1548,149 @@ async function sendGeneralOrderSummary(body) {
     .eq('body', body);
 
   console.log(`General order summary sent to ${adminUsers.length} admin(s) with ${attachments.length} attachments`);
+  return { success: true };
+}
+
+async function sendSupplierReport(body) {
+  const orderId = body.split(':')[1] || body; // Support both formats
+  
+  // Get order details
+  const { data: order, error: orderError } = await supabase
+    .from('general_orders')
+    .select('*')
+    .eq('id', orderId)
+    .single();
+
+  if (orderError || !order) {
+    console.error('Error fetching order for supplier report:', orderError);
+    return { success: false, error: 'הזמנה לא נמצאה' };
+  }
+
+  // Get all order items grouped by product
+  const { data: orderItems, error: itemsError } = await supabase
+    .from('order_items')
+    .select(`
+      *,
+      products(name, supplier_name, supplier_contact)
+    `)
+    .eq('order_id', orderId);
+
+  if (itemsError) {
+    console.error('Error fetching order items for supplier report:', itemsError);
+    return { success: false, error: 'שגיאה בטעינת פריטים' };
+  }
+
+  // Group items by supplier
+  const supplierGroups = {};
+  (orderItems || []).forEach(item => {
+    const supplierName = item.products?.supplier_name || 'ספק לא ידוע';
+    
+    if (!supplierGroups[supplierName]) {
+      supplierGroups[supplierName] = {
+        supplier_contact: item.products?.supplier_contact || '',
+        items: [],
+        total_quantity: 0,
+        total_amount: 0
+      };
+    }
+    
+    supplierGroups[supplierName].items.push(item);
+    supplierGroups[supplierName].total_quantity += item.quantity;
+    supplierGroups[supplierName].total_amount += item.total_price;
+  });
+
+  // Get admin users
+  const { data: adminUsers, error: adminError } = await supabase
+    .from('users')
+    .select('email, full_name')
+    .eq('role', 'admin')
+    .eq('is_active', true);
+
+  if (adminError || !adminUsers || adminUsers.length === 0) {
+    console.error('Error fetching admin users:', adminError);
+    return { success: false, error: 'לא נמצאו מנהלים' };
+  }
+
+  // Create supplier report HTML
+  const supplierReportHtml = `
+    <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px;">
+      <h1 style="color: #2c3e50; text-align: center; margin-bottom: 30px;">
+        📊 דוח ספקים - ${order.title || order.name}
+      </h1>
+      
+      <div style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-bottom: 30px;">
+        <h2 style="color: #495057; margin-top: 0;">פרטי ההזמנה</h2>
+        <p><strong>שם ההזמנה:</strong> ${order.title || order.name}</p>
+        <p><strong>תאריך סגירה:</strong> ${new Date().toLocaleString('he-IL')}</p>
+        <p><strong>סכום כולל:</strong> ₪${order.total_amount || 0}</p>
+        <p><strong>מספר ספקים:</strong> ${Object.keys(supplierGroups).length}</p>
+      </div>
+
+      ${Object.entries(supplierGroups).map(([supplierName, supplierData]) => `
+        <div style="border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin-bottom: 20px;">
+          <h3 style="color: #28a745; margin-top: 0; border-bottom: 2px solid #28a745; padding-bottom: 10px;">
+            🏢 ${supplierName}
+          </h3>
+          ${supplierData.supplier_contact ? `<p><strong>איש קשר:</strong> ${supplierData.supplier_contact}</p>` : ''}
+          
+          <div style="background: #e9ecef; padding: 15px; border-radius: 4px; margin: 15px 0;">
+            <p style="margin: 5px 0;"><strong>סה"כ פריטים:</strong> ${supplierData.total_quantity}</p>
+            <p style="margin: 5px 0;"><strong>סה"כ סכום:</strong> ₪${supplierData.total_amount}</p>
+          </div>
+
+          <h4 style="color: #6c757d; margin: 15px 0 10px 0;">פירוט מוצרים:</h4>
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <thead>
+              <tr style="background: #f8f9fa;">
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">מוצר</th>
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">כמות</th>
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">מחיר יחידה</th>
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">סכום</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${supplierData.items.map(item => `
+                <tr>
+                  <td style="border: 1px solid #ddd; padding: 8px;">${item.products?.name || 'מוצר לא ידוע'}</td>
+                  <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${item.quantity}</td>
+                  <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">₪${item.unit_price}</td>
+                  <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">₪${item.total_price}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `).join('')}
+
+      <div style="background: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 6px; margin-top: 30px;">
+        <p style="margin: 0; color: #155724;">
+          <strong>📋 סיכום:</strong> דוח זה נוצר אוטומטית בעת סגירת ההזמנה הקבוצתית
+        </p>
+      </div>
+    </div>
+  `;
+
+  // Send supplier report to all admin users
+  for (const admin of adminUsers) {
+    const mailOptions = {
+      from: SENDER_EMAIL,
+      to: admin.email,
+      subject: `📊 דוח ספקים - ${order.title || order.name}`,
+      html: supplierReportHtml
+    };
+
+    await sendEmailWithProviders(mailOptions);
+  }
+
+  // Mark the system notification as sent
+  await supabase
+    .from('email_logs')
+    .update({
+      status: 'sent',
+      sent_at: new Date().toISOString()
+    })
+    .eq('body', body);
+
+  console.log(`Supplier report sent to ${adminUsers.length} admin(s) for order: ${order.title || order.name}`);
   return { success: true };
 }

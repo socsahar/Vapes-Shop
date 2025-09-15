@@ -580,12 +580,13 @@ async function sendOrderCloseNotifications(order) {
       }
     });
 
-    // Queue system notification
+    // Queue system notification for admin summary
     const orderName = order.title || order.name || 'הזמנה קבוצתית';
     const systemSubject = template ?
       template.subject_template.replace('{order_name}', orderName) :
       `סיכום הזמנה קבוצתית - ${orderName}`;
 
+    // Admin report
     const { error: systemError } = await supabase
       .from('email_queue')
       .insert({
@@ -598,22 +599,90 @@ async function sendOrderCloseNotifications(order) {
         created_at: new Date().toISOString()
       });
 
+    // Supplier report for admins
+    const { error: supplierError } = await supabase
+      .from('email_queue')
+      .insert({
+        recipient_email: 'SYSTEM_SUPPLIER_REPORT',
+        subject: `דוח ספקים - ${orderName}`,
+        email_type: 'supplier_report',
+        template_id: template?.id || null,
+        status: 'pending',
+        order_id: order.id,
+        created_at: new Date().toISOString()
+      });
+
+    // Send general closure notification to ALL users (not just participants)
+    console.log('📧 Sending general closure notification to ALL users...');
+    const { data: allUsers, error: allUsersError } = await supabase
+      .from('users')
+      .select('id, email, full_name')
+      .eq('is_active', true);
+
+    if (!allUsersError && allUsers && allUsers.length > 0) {
+      // Filter out users who already got personalized emails
+      const participantEmails = new Set(users.map(u => u.email));
+      const nonParticipants = allUsers.filter(user => !participantEmails.has(user.email));
+      
+      if (nonParticipants.length > 0) {
+        const generalNotificationPromises = nonParticipants.map(async (user) => {
+          const generalSubject = `הזמנה קבוצתית נסגרה - ${orderName}`;
+          
+          const { error: queueError } = await supabase
+            .from('email_queue')
+            .insert({
+              recipient_email: user.email,
+              subject: generalSubject,
+              email_type: 'general_order_close_notification',
+              template_id: template?.id || null,
+              status: 'pending',
+              order_id: order.id,
+              created_at: new Date().toISOString()
+            });
+
+          if (queueError) {
+            console.error(`❌ Error queueing general notification for ${user.email}:`, queueError);
+            return { success: false, user: user.email };
+          } else {
+            return { success: true, user: user.email };
+          }
+        });
+
+        const generalResults = await Promise.all(generalNotificationPromises);
+        const successfulGeneral = generalResults.filter(r => r.success);
+        
+        console.log(`📧 Queued ${successfulGeneral.length} general closure notifications to non-participants`);
+      } else {
+        console.log('📧 All users were participants - no additional general notifications needed');
+      }
+    }
+
     // Wait for all emails to be queued
     const results = await Promise.all(emailPromises);
     const successful = results.filter(r => r.success);
 
-    console.log(`📧 Queued ${successful.length} user closure emails + 1 system notification`);
+    const totalEmails = successful.length + (allUsers?.length - successful.length || 0) + 2; // +2 for admin and supplier reports
+
+    console.log(`📧 COMPLETE EMAIL SUMMARY:`);
+    console.log(`   - ${successful.length} personalized emails to participants`);
+    console.log(`   - ${(allUsers?.length || 0) - successful.length} general notifications to non-participants`);
+    console.log(`   - 1 admin report (SYSTEM_ORDER_CLOSED)`);
+    console.log(`   - 1 supplier report (SYSTEM_SUPPLIER_REPORT)`);
+    console.log(`   - Total: ${totalEmails} emails queued`);
     
     await logActivity(
       'cron_closure_emails',
-      `Automatic closure emails queued: ${successful.length} users for order: ${orderName}`,
+      `Complete closure email system: ${successful.length} personalized + ${(allUsers?.length || 0) - successful.length} general + 2 admin reports for: ${orderName}`,
       'completed',
       null,
       order.id,
       { 
         order_title: orderName,
         participants: successful.length,
+        non_participants: (allUsers?.length || 0) - successful.length,
+        admin_reports: 2,
         system_notification: systemError ? 'failed' : 'queued',
+        supplier_report: supplierError ? 'failed' : 'queued',
         processed_at: new Date().toISOString()
       }
     );
