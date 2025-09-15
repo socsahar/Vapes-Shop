@@ -107,7 +107,7 @@ export async function GET(request) {
             }
         }
 
-        // Get active general orders (open and not past deadline)
+        // Get active general orders (open or scheduled and not past deadline)
         const { data: orders, error } = await supabaseAdmin
             .from('general_orders')
             .select(`
@@ -118,7 +118,7 @@ export async function GET(request) {
                     total_amount
                 )
             `)
-            .eq('status', 'open')
+            .in('status', ['open', 'scheduled'])
             .gte('deadline', now)
             .order('deadline', { ascending: true });
 

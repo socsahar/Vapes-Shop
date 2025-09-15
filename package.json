@@ -15,7 +15,8 @@
     "prepare-prod": "node prepare-production.js",
     "production-setup": "node production-setup.js",
     "inspect-db": "node inspect-database.js",
-    "cron": "node cron-general-orders.js"
+    "cron": "node cron-general-orders.js",
+    "test:scheduled-orders": "node test-scheduled-orders.js"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

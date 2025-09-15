@@ -18,6 +18,8 @@ export default function ShopPage() {
     const [showParticipateModal, setShowParticipateModal] = useState(false);
     const [participateLoading, setParticipateLoading] = useState(false);
     const [shopStatus, setShopStatus] = useState('loading');
+    const [shopStatusMessage, setShopStatusMessage] = useState('');
+    const [actualShopData, setActualShopData] = useState(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [lastUpdated, setLastUpdated] = useState(null);
     const [userParticipation, setUserParticipation] = useState({});
@@ -50,6 +52,7 @@ export default function ShopPage() {
             fetchGroupOrders();
             fetchProducts(); // Always fetch products
             fetchShopSettings();
+            fetchActualShopStatus(); // Fetch real shop status from database
         }
     }, [user]);
 
@@ -76,7 +79,10 @@ export default function ShopPage() {
             console.log(`Setting up polling every ${pollingInterval/1000}s (${groupOrders.length} active orders)`);
             
             interval = setInterval(async () => {
-                await fetchGroupOrders();
+                await Promise.all([
+                    fetchGroupOrders(),
+                    fetchActualShopStatus()
+                ]);
             }, pollingInterval);
         };
         
@@ -101,19 +107,18 @@ export default function ShopPage() {
             if (response.ok) {
                 const data = await response.json();
                 setGroupOrders(data.orders || []);
-                setShopStatus(data.orders && data.orders.length > 0 ? 'open' : 'closed');
+                
+                // Don't set shop status here - let fetchActualShopStatus handle it
                 setLastUpdated(new Date());
                 
                 // Fetch detailed participation for each order
                 await fetchUserParticipation(data.orders || []);
             } else {
                 setGroupOrders([]);
-                setShopStatus('closed');
             }
         } catch (error) {
             console.error('Error fetching group orders:', error);
             setGroupOrders([]);
-            setShopStatus('closed');
         } finally {
             setGroupOrdersLoading(false);
             setIsRefreshing(false);
@@ -188,6 +193,33 @@ export default function ShopPage() {
             }
         } catch (error) {
             console.error('Error fetching shop settings:', error);
+        }
+    };
+
+    const fetchActualShopStatus = async () => {
+        try {
+            const response = await fetch('/api/shop/status');
+            if (response.ok) {
+                const data = await response.json();
+                setActualShopData(data);
+                
+                // Set shop status and message based on database data
+                if (data.is_open) {
+                    setShopStatus('open');
+                    setShopStatusMessage(data.message || 'החנות פתוחה - הזמנות קבוצתיות פעילות');
+                } else {
+                    setShopStatus('closed');
+                    setShopStatusMessage(data.message || 'החנות סגורה - אין הזמנות קבוצתיות פעילות');
+                }
+            } else {
+                // Fallback status
+                setShopStatus('closed');
+                setShopStatusMessage('החנות סגורה - אין הזמנות קבוצתיות פעילות');
+            }
+        } catch (error) {
+            console.error('Error fetching actual shop status:', error);
+            setShopStatus('closed');
+            setShopStatusMessage('שגיאה בטעינת סטטוס החנות');
         }
     };
 
@@ -271,8 +303,11 @@ export default function ShopPage() {
     };
 
     const handleSelectOrder = (order) => {
-        setSelectedOrder(order);
-        setCart({});
+        // Only allow selection of open orders
+        if (order.status === 'open') {
+            setSelectedOrder(order);
+            setCart({});
+        }
     };
 
     const handleViewUserOrder = (order) => {
@@ -320,7 +355,10 @@ export default function ShopPage() {
     };
 
     const handleManualRefresh = async () => {
-        await fetchGroupOrders(true);
+        await Promise.all([
+            fetchGroupOrders(true),
+            fetchActualShopStatus()
+        ]);
     };
 
     if (loading) {
@@ -351,12 +389,12 @@ export default function ShopPage() {
                                     {shopStatus === 'open' ? (
                                         <>
                                             <span className="status-indicator open"></span>
-                                            <span className="text-sm md:text-base">החנות פתוחה - הזמנות קבוצתיות פעילות</span>
+                                            <span className="text-sm md:text-base">{shopStatusMessage}</span>
                                         </>
                                     ) : shopStatus === 'closed' ? (
                                         <>
                                             <span className="status-indicator closed"></span>
-                                            <span className="text-sm md:text-base">החנות סגורה - אין הזמנות קבוצתיות פעילות</span>
+                                            <span className="text-sm md:text-base">{shopStatusMessage}</span>
                                         </>
                                     ) : (
                                         <>
@@ -520,43 +558,68 @@ export default function ShopPage() {
                                         {groupOrders.map((order) => (
                                             <div 
                                                 key={order.id} 
-                                                className={`group-order-card ${selectedOrder?.id === order.id ? 'selected' : ''} ${order.user_participating ? 'participating' : ''}`}
-                                                onClick={() => handleSelectOrder(order)}
+                                                className={`group-order-card ${selectedOrder?.id === order.id ? 'selected' : ''} ${order.user_participating ? 'participating' : ''} ${order.status === 'scheduled' ? 'scheduled' : ''}`}
+                                                onClick={() => order.status === 'open' ? handleSelectOrder(order) : null}
+                                                style={{ cursor: order.status === 'scheduled' ? 'not-allowed' : 'pointer' }}
                                             >
                                                 <div className="order-header">
                                                     <h3 className="order-title">{order.title}</h3>
-                                                    {order.user_participating && (
-                                                        <span className="participation-badge">משתתף</span>
-                                                    )}
+                                                    <div className="order-badges">
+                                                        {order.status === 'scheduled' && (
+                                                            <span className="status-badge scheduled">מתוזמן</span>
+                                                        )}
+                                                        {order.user_participating && (
+                                                            <span className="participation-badge">משתתף</span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 
                                                 {order.description && (
                                                     <p className="order-description">{order.description}</p>
                                                 )}
                                                 
-                                                <div className="order-stats">
-                                                    <div className="stat">
-                                                        <span className="stat-label">משתתפים:</span>
-                                                        <span className="stat-value">{order.total_participants}</span>
+                                                {order.status === 'scheduled' && order.opening_time ? (
+                                                    <div className="scheduled-info">
+                                                        <strong>יפתח ב:</strong> {new Date(order.opening_time).toLocaleDateString('he-IL', {
+                                                            weekday: 'short',
+                                                            month: 'short',
+                                                            day: 'numeric',
+                                                            hour: '2-digit',
+                                                            minute: '2-digit'
+                                                        })}
                                                     </div>
-                                                </div>
+                                                ) : (
+                                                    <div className="order-stats">
+                                                        <div className="stat">
+                                                            <span className="stat-label">משתתפים:</span>
+                                                            <span className="stat-value">{order.total_participants}</span>
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 
                                                 <div className="order-timing">
-                                                    <div className={`time-remaining ${order.is_ending_soon ? 'urgent' : ''}`}>
-                                                        {order.days_remaining > 0 ? (
-                                                            order.hours_remaining > 0 ? (
-                                                                <span>נותרו {order.days_remaining} ימים, {order.hours_remaining} שעות ו-{order.minutes_remaining} דקות</span>
+                                                    {order.status === 'scheduled' ? (
+                                                        <div className="scheduled-status">
+                                                            <span>הזמנה מתוזמנת - עדיין לא פתוחה להשתתפות</span>
+                                                        </div>
+                                                    ) : (
+                                                        <div className={`time-remaining ${order.is_ending_soon ? 'urgent' : ''}`}>
+                                                            {order.days_remaining > 0 ? (
+                                                                order.hours_remaining > 0 ? (
+                                                                    <span>נותרו {order.days_remaining} ימים, {order.hours_remaining} שעות ו-{order.minutes_remaining} דקות</span>
+                                                                ) : (
+                                                                    <span>נותרו {order.days_remaining} ימים ו-{order.minutes_remaining} דקות</span>
+                                                                )
+                                                            ) : order.hours_remaining > 0 ? (
+                                                                <span>נותרו {order.hours_remaining} שעות ו-{order.minutes_remaining} דקות</span>
+                                                            ) : order.minutes_remaining > 0 ? (
+                                                                <span>נותרו {order.minutes_remaining} דקות</span>
                                                             ) : (
-                                                                <span>נותרו {order.days_remaining} ימים ו-{order.minutes_remaining} דקות</span>
-                                                            )
-                                                        ) : order.hours_remaining > 0 ? (
-                                                            <span>נותרו {order.hours_remaining} שעות ו-{order.minutes_remaining} דקות</span>
-                                                        ) : order.minutes_remaining > 0 ? (
-                                                            <span>נותרו {order.minutes_remaining} דקות</span>
-                                                        ) : (
-                                                            <span>ההזמנה תיסגר בקרוב</span>
-                                                        )}
-                                                    </div>
+                                                                <span>ההזמנה תיסגר בקרוב</span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    
                                                     <div className="deadline">
                                                         נסגרת: {new Date(order.deadline).toLocaleDateString('he-IL', {
                                                             weekday: 'short',
@@ -568,7 +631,7 @@ export default function ShopPage() {
                                                     </div>
                                                 </div>
                                                 
-                                                {order.user_participating && (
+                                                {order.user_participating && order.status === 'open' && (
                                                     <div className="user-participation">
                                                         <div className="participation-actions">
                                                             <button 
@@ -583,6 +646,12 @@ export default function ShopPage() {
                                                         </div>
                                                     </div>
                                                 )}
+                                                
+                                                {order.status === 'scheduled' && (
+                                                    <div className="scheduled-notice">
+                                                        ההזמנה תיפתח אוטומטית בזמן המתוזמן
+                                                    </div>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
@@ -590,7 +659,7 @@ export default function ShopPage() {
                             </section>
 
                             {/* Product Selection */}
-                            {selectedOrder && (
+                            {selectedOrder && selectedOrder.status === 'open' && (
                                 <section className="products-section">
                                     <div className="section-header">
                                         <h2 className="section-title">

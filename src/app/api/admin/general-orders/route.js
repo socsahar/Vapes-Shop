@@ -6,6 +6,83 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// Helper function to queue opening emails to all users
+async function queueOpeningEmails(generalOrder) {
+  try {
+    console.log(`📧 Queuing opening emails for order: ${generalOrder.title}`);
+    
+    // Get all active users
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('id, email, full_name')
+      .eq('is_active', true);
+
+    if (error || !users) {
+      throw new Error(`Error fetching users: ${error?.message || 'No users found'}`);
+    }
+
+    // Check if email_queue table exists, if not use email_logs as fallback
+    const emailsToQueue = users.map(user => ({
+      recipient_email: user.email,
+      recipient_name: user.full_name,
+      subject: `🎉 הזמנה קבוצתית נפתחה - ${generalOrder.title}`,
+      html_body: `
+        <div dir="rtl" style="font-family: Arial, sans-serif;">
+          <h2>שלום ${user.full_name},</h2>
+          <p>הזמנה קבוצתית חדשה נפתחה!</p>
+          <h3>${generalOrder.title}</h3>
+          ${generalOrder.description ? `<p>${generalOrder.description}</p>` : ''}
+          <p><strong>תאריך סגירה:</strong> ${new Date(generalOrder.deadline).toLocaleDateString('he-IL', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })}</p>
+          <p>היכנס לאתר כדי להצטרף להזמנה!</p>
+        </div>
+      `,
+      email_type: 'general_order_open',
+      user_id: user.id,
+      general_order_id: generalOrder.id,
+      priority: 3
+    }));
+
+    // Try to use email_queue table first
+    const { error: queueError } = await supabase
+      .from('email_queue')
+      .insert(emailsToQueue);
+
+    if (queueError) {
+      console.log('Email queue table not available, using email_logs fallback');
+      
+      // Fallback to email_logs table
+      const fallbackEmails = emailsToQueue.map(email => ({
+        recipient_email: email.recipient_email,
+        subject: email.subject,
+        body: `GENERAL_ORDER_OPENED_USER:${email.general_order_id}:${email.user_id}`,
+        status: 'failed' // Queue status
+      }));
+
+      const { error: fallbackError } = await supabase
+        .from('email_logs')
+        .insert(fallbackEmails);
+
+      if (fallbackError) {
+        throw new Error(`Error queuing emails: ${fallbackError.message}`);
+      } else {
+        console.log(`📧 Queued ${fallbackEmails.length} opening notification emails via email_logs`);
+      }
+    } else {
+      console.log(`📧 Queued ${emailsToQueue.length} opening notification emails via email_queue`);
+    }
+  } catch (error) {
+    console.error('❌ Error queuing opening emails:', error);
+    throw error;
+  }
+}
+
 // GET - Fetch all general orders (admin only)
 export async function GET() {
   try {
@@ -200,6 +277,16 @@ export async function POST(request) {
       created_by
     });
 
+    // Determine the correct status based on opening_time
+    let orderStatus;
+    if (jerusalemOpeningTime && new Date(jerusalemOpeningTime) > new Date()) {
+      orderStatus = 'scheduled';
+      console.log(`Order will be scheduled to open at: ${jerusalemOpeningTime}`);
+    } else {
+      orderStatus = 'open';
+      console.log('Order will open immediately');
+    }
+
     const { data: newOrder, error: createError } = await supabase
       .from('general_orders')
       .insert([{
@@ -208,8 +295,7 @@ export async function POST(request) {
         deadline: jerusalemDeadline,
         opening_time: jerusalemOpeningTime,
         created_by,
-        // Set status explicitly since triggers might not work if opening_time column doesn't exist
-        status: jerusalemOpeningTime && new Date(jerusalemOpeningTime) > new Date() ? 'scheduled' : 'open',
+        status: orderStatus,
         opening_email_sent: false,
         reminder_1h_sent: false,
         reminder_10m_sent: false,
@@ -228,65 +314,137 @@ export async function POST(request) {
 
     console.log('General order created successfully:', newOrder);
 
-    // Try to open the shop (skip if RPC function doesn't exist)
-    try {
-      const { error: shopError } = await supabase
-        .rpc('toggle_shop_status', {
-          open_status: true,
-          general_order_id: newOrder.id,
-          status_message: `החנות פתוחה להזמנות! הזמנה קבוצתית: ${title}`
-        });
+    // Handle shop status based on order status
+    if (newOrder.status === 'open') {
+      // Open the shop immediately for active orders
+      try {
+        console.log('Opening shop for immediate general order...');
+        const { error: shopError } = await supabase
+          .rpc('toggle_shop_status', {
+            open_status: true,
+            general_order_id: newOrder.id,
+            status_message: `החנות פתוחה להזמנות! הזמנה קבוצתית: ${title}`
+          });
 
-      if (shopError) {
-        console.error('Error opening shop (RPC might not exist):', shopError);
+        if (shopError) {
+          console.error('Error opening shop:', shopError);
+        } else {
+          console.log('✅ Shop opened successfully for immediate general order');
+        }
+      } catch (shopRpcError) {
+        console.error('Shop RPC function not available:', shopRpcError);
       }
-    } catch (shopRpcError) {
-      console.error('Shop RPC function not available:', shopRpcError);
+    } else if (newOrder.status === 'scheduled') {
+      // Keep shop closed for scheduled orders with proper message
+      try {
+        console.log('Setting shop status for scheduled general order...');
+        const openingTime = new Date(newOrder.opening_time);
+        const openingTimeStr = openingTime.toLocaleString('he-IL', {
+          timeZone: 'Asia/Jerusalem',
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        
+        const { error: shopError } = await supabase
+          .rpc('toggle_shop_status', {
+            open_status: false,
+            general_order_id: null,
+            status_message: `החנות סגורה כרגע. הזמנה קבוצתית "${title}" תיפתח ב-${openingTimeStr}`
+          });
+
+        if (shopError) {
+          console.error('Error setting shop status for scheduled order:', shopError);
+        } else {
+          console.log('✅ Shop status updated for scheduled general order');
+        }
+      } catch (shopRpcError) {
+        console.error('Shop RPC function not available:', shopRpcError);
+      }
     }
 
-    // Queue opening email notification to admin
+    // Queue email notifications based on order type
     try {
       // Get admin email from environment
       const adminEmail = process.env.ADMIN_EMAIL;
-      if (!adminEmail) {
-        console.error('ADMIN_EMAIL environment variable not set, skipping admin notification');
-        // Continue to return the success response below
-      } else {
-        const { error: emailError } = await supabase
-          .from('email_logs')
-          .insert([{
-            recipient_email: adminEmail,
-            subject: `הזמנה קבוצתית חדשה נפתחה - ${title}`,
-            body: `GENERAL_ORDER_OPENED:${newOrder.id}`,
-            status: 'failed' // Use 'failed' as queue status, will be changed to 'sent' when processed
-          }]);
+      
+      if (newOrder.status === 'open') {
+        // For immediate orders: Send admin notification AND queue opening emails
+        if (adminEmail) {
+          const { error: adminEmailError } = await supabase
+            .from('email_logs')
+            .insert([{
+              recipient_email: adminEmail,
+              subject: `הזמנה קבוצתית נפתחה מיד - ${title}`,
+              body: `GENERAL_ORDER_OPENED:${newOrder.id}`,
+              status: 'failed' // Use 'failed' as queue status
+            }]);
 
-        if (emailError) {
-          console.error('Error queueing email notification:', emailError);
-        } else {
-          console.log('Email notification queued successfully');
-          
-          // Automatically trigger email processing
-          try {
-            console.log('Triggering automatic email processing...');
-            const emailServiceResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/admin/email-service`, {
-              method: 'GET'
-            });
-            
-            if (emailServiceResponse.ok) {
-              const emailResult = await emailServiceResponse.json();
-              console.log('Automatic email processing result:', emailResult);
-            } else {
-              console.error('Email service request failed:', emailServiceResponse.status);
-            }
-          } catch (autoEmailError) {
-            console.error('Error in automatic email processing:', autoEmailError);
-            // Don't fail the order creation if email processing fails
+          if (adminEmailError) {
+            console.error('Error queueing admin email:', adminEmailError);
+          } else {
+            console.log('Admin notification queued for immediate order');
           }
         }
+        
+        // Queue opening emails to all users for immediate orders
+        await queueOpeningEmails(newOrder);
+        
+      } else if (newOrder.status === 'scheduled') {
+        // For scheduled orders: Only send admin notification (opening emails will be sent by cron job)
+        if (adminEmail) {
+          const openingTime = new Date(newOrder.opening_time);
+          const openingTimeStr = openingTime.toLocaleString('he-IL', {
+            timeZone: 'Asia/Jerusalem',
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long', 
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+          
+          const { error: adminEmailError } = await supabase
+            .from('email_logs')
+            .insert([{
+              recipient_email: adminEmail,
+              subject: `הזמנה קבוצתית תוזמנה - ${title}`,
+              body: `GENERAL_ORDER_SCHEDULED:${newOrder.id}:${openingTimeStr}`,
+              status: 'failed' // Use 'failed' as queue status
+            }]);
+
+          if (adminEmailError) {
+            console.error('Error queueing admin email:', adminEmailError);
+          } else {
+            console.log('Admin notification queued for scheduled order');
+          }
+        }
+        
+        console.log('📧 Opening emails will be sent automatically when order opens via cron job');
       }
-    } catch (emailTableError) {
-      console.error('Email logs table structure issue:', emailTableError);
+
+      // Automatically trigger email processing
+      try {
+        console.log('Triggering automatic email processing...');
+        const emailServiceResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/admin/email-service`, {
+          method: 'GET'
+        });
+        
+        if (emailServiceResponse.ok) {
+          const emailResult = await emailServiceResponse.json();
+          console.log('Automatic email processing result:', emailResult);
+        } else {
+          console.error('Email service request failed:', emailServiceResponse.status);
+        }
+      } catch (autoEmailError) {
+        console.error('Error in automatic email processing:', autoEmailError);
+        // Don't fail the order creation if email processing fails
+      }
+    } catch (emailSystemError) {
+      console.error('Email system error:', emailSystemError);
     }
 
     return NextResponse.json({

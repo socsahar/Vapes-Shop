@@ -149,11 +149,11 @@ async function autoOpenFutureOrders() {
   
   const now = new Date();
   
-  // Find orders with future/scheduled status that should be opened now
+  // Find orders with scheduled status that should be opened now
   const { data: ordersToOpen, error } = await supabase
     .from('general_orders')
     .select('*')
-    .in('status', ['future', 'scheduled'])
+    .eq('status', 'scheduled')
     .lte('opening_time', now.toISOString())
     .order('opening_time', { ascending: true });
 
