@@ -25,16 +25,17 @@ export default function ShopPage() {
     const [userParticipation, setUserParticipation] = useState({});
     const [showUserOrderModal, setShowUserOrderModal] = useState(false);
     const [selectedUserOrder, setSelectedUserOrder] = useState(null);
-    const [shopSettings, setShopSettings] = useState({
-        closedTitle: 'החנות סגורה כרגע',
+    // Static shop settings - not affected by admin panel changes
+    const shopSettings = {
+        closedTitle: 'החנות סגורה כרגע. נפתח בהזמנה קבוצתית הבאה.',
         closedMessage: 'החנות פועלת במודל הזמנות קבוצתיות בלבד\nכאשר המנהל יפתח הזמנה קבוצתית חדשה, תוכל להשתתף',
         closedInstructions: [
             '🕐 המנהל פותח הזמנה קבוצתית עם תאריך סגירה',
             '📧 תקבל התראה באימייל כשההזמנה נפתחת',
             '🛒 תוכל להצטרף ולהזמין מוצרים עד תאריך הסגירה',
-            '📦 ההזמנה נסגרת אוטומטית ונשלחת לספק'
+            '� תשלום יש להעביר במזומן באיסוף או בפייבוקס: 0546743526'
         ]
-    });
+    };
     const router = useRouter();
 
     useEffect(() => {
@@ -51,7 +52,7 @@ export default function ShopPage() {
         if (user) {
             fetchGroupOrders();
             fetchProducts(); // Always fetch products
-            fetchShopSettings();
+            // fetchShopSettings(); // Disabled - using static settings instead
             fetchActualShopStatus(); // Fetch real shop status from database
         }
     }, [user]);
@@ -162,39 +163,40 @@ export default function ShopPage() {
         }
     };
 
-    const fetchShopSettings = async () => {
-        try {
-            const response = await fetch('/api/shop/status');
-            if (response.ok) {
-                const data = await response.json();
-                if (data.message) {
-                    try {
-                        // Try to parse as JSON first (new structured format)
-                        const parsedSettings = JSON.parse(data.message);
-                        if (parsedSettings.closedTitle || parsedSettings.closedMessage || parsedSettings.closedInstructions) {
-                            setShopSettings(prev => ({
-                                ...prev,
-                                closedTitle: parsedSettings.closedTitle || prev.closedTitle,
-                                closedMessage: parsedSettings.closedMessage || prev.closedMessage,
-                                closedInstructions: parsedSettings.closedInstructions || prev.closedInstructions
-                            }));
-                            return;
-                        }
-                    } catch (jsonError) {
-                        // Fallback to old format (plain text)
-                        const [title, ...messageParts] = data.message.split('\n');
-                        setShopSettings(prev => ({
-                            ...prev,
-                            closedTitle: title || prev.closedTitle,
-                            closedMessage: messageParts.join('\n') || prev.closedMessage
-                        }));
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('Error fetching shop settings:', error);
-        }
-    };
+    // fetchShopSettings function disabled - using static settings instead
+    // const fetchShopSettings = async () => {
+    //     try {
+    //         const response = await fetch('/api/shop/status');
+    //         if (response.ok) {
+    //             const data = await response.json();
+    //             if (data.message) {
+    //                 try {
+    //                     // Try to parse as JSON first (new structured format)
+    //                     const parsedSettings = JSON.parse(data.message);
+    //                     if (parsedSettings.closedTitle || parsedSettings.closedMessage || parsedSettings.closedInstructions) {
+    //                         setShopSettings(prev => ({
+    //                             ...prev,
+    //                             closedTitle: parsedSettings.closedTitle || prev.closedTitle,
+    //                             closedMessage: parsedSettings.closedMessage || prev.closedMessage,
+    //                             closedInstructions: parsedSettings.closedInstructions || prev.closedInstructions
+    //                         }));
+    //                         return;
+    //                     }
+    //                 } catch (jsonError) {
+    //                     // Fallback to old format (plain text)
+    //                     const [title, ...messageParts] = data.message.split('\n');
+    //                     setShopSettings(prev => ({
+    //                         ...prev,
+    //                         closedTitle: title || prev.closedTitle,
+    //                         closedMessage: messageParts.join('\n') || prev.closedMessage
+    //                     }));
+    //                 }
+    //             }
+    //         }
+    //     } catch (error) {
+    //         console.error('Error fetching shop settings:', error);
+    //     }
+    // };
 
     const fetchActualShopStatus = async () => {
         try {

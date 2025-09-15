@@ -106,7 +106,8 @@ async function main() {
     await Promise.all([
       runWithLogging('auto_open_orders', autoOpenFutureOrders),
       runWithLogging('auto_close_orders', autoCloseExpiredOrders),
-      runWithLogging('send_reminder_emails', sendReminderEmails)
+      runWithLogging('send_reminder_emails', sendReminderEmails),
+      runWithLogging('process_email_queue', processEmailQueue)
     ]);
     
     const totalDuration = Date.now() - overallStartTime;
@@ -558,6 +559,82 @@ async function sendReminderNotification(order, reminderType) {
     console.log(`📧 Queued ${emailsToQueue.length} ${reminderType} reminder emails`);
   } catch (error) {
     console.error('❌ Error queuing reminder notifications:', error);
+  }
+}
+
+/**
+ * Process pending emails from the email queue
+ * Integrates the email processor functionality into the cron system
+ */
+async function processEmailQueue() {
+  console.log('📧 Processing email queue...');
+  
+  try {
+    // Call the email service API endpoint to process pending emails
+    const response = await fetch(`${SITE_URL}/api/admin/email-service`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'CronJob/1.0'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Email service responded with status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    
+    const processed = result.processed || 0;
+    const failed = result.failed || 0;
+    const total = processed + failed;
+
+    // Log activity based on results
+    if (total > 0) {
+      await logActivity(
+        'cron_process_email_queue',
+        `Processed ${processed} emails successfully, ${failed} failed`,
+        processed > 0 ? 'completed' : 'partial_failure',
+        null,
+        null,
+        { 
+          emails_processed: processed,
+          emails_failed: failed,
+          total_emails: total,
+          service_response: result
+        }
+      );
+      
+      console.log(`📧 Email processing completed: ${processed} sent, ${failed} failed`);
+    } else {
+      await logActivity(
+        'cron_process_email_queue',
+        'No pending emails to process',
+        'completed',
+        null,
+        null,
+        { emails_processed: 0, queue_empty: true }
+      );
+      
+      console.log('📭 No pending emails in queue');
+    }
+
+    return { processed, failed, total };
+    
+  } catch (error) {
+    console.error('❌ Error processing email queue:', error);
+    
+    // Log the error
+    await logActivity(
+      'cron_process_email_queue',
+      `Failed to process email queue: ${error.message}`,
+      'failed',
+      null,
+      null,
+      { error: error.message, stack: error.stack }
+    );
+    
+    throw error;
   }
 }
 

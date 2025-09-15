@@ -10,6 +10,8 @@ const supabase = createClient(
 export async function GET() {
   try {
     console.log('Running general order reminder check...');
+    console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+    console.log('Has service key:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
 
     const now = new Date();
     const results = {
@@ -21,10 +23,20 @@ export async function GET() {
     };
 
     // Get all general orders that need processing
+    console.log('Querying for scheduled and open orders...');
     const { data: orders, error: fetchError } = await supabase
       .from('general_orders')
       .select('*')
       .in('status', ['scheduled', 'open']);
+
+    console.log('Query result - Error:', fetchError);
+    console.log('Query result - Orders found:', orders?.length || 0);
+    
+    if (orders && orders.length > 0) {
+      orders.forEach((order, i) => {
+        console.log(`Order ${i+1}: ${order.title} - ${order.status} - ${order.opening_time}`);
+      });
+    }
 
     if (fetchError) {
       console.error('Error fetching orders:', fetchError);
@@ -88,25 +100,8 @@ export async function GET() {
                   .insert(emailsToQueue);
 
                 if (queueError) {
-                  console.log('Email queue table not available, using email_logs fallback');
-                  
-                  // Fallback to email_logs table
-                  const fallbackEmails = emailsToQueue.map(email => ({
-                    recipient_email: email.recipient_email,
-                    subject: email.subject,
-                    body: `GENERAL_ORDER_OPENED:${email.general_order_id}:${email.user_id}`,
-                    status: 'failed' // Queue status for email_logs
-                  }));
-
-                  const { error: fallbackError } = await supabase
-                    .from('email_logs')
-                    .insert(fallbackEmails);
-
-                  if (fallbackError) {
-                    throw new Error(`Error queuing emails: ${fallbackError.message}`);
-                  } else {
-                    console.log(`📧 Queued ${fallbackEmails.length} opening emails via email_logs`);
-                  }
+                  console.error('Error queuing emails:', queueError);
+                  throw new Error(`Error queuing emails: ${queueError.message}`);
                 } else {
                   console.log(`📧 Queued ${emailsToQueue.length} opening emails via email_queue`);
                 }
@@ -114,9 +109,9 @@ export async function GET() {
                 // Update shop status to open
                 const { error: shopError } = await supabase
                   .rpc('toggle_shop_status', { 
-                    new_status: true, 
-                    new_message: `ההזמנה הקבוצתית "${order.title}" נפתחה!`,
-                    current_order_id: order.id 
+                    open_status: true, 
+                    status_message: `ההזמנה הקבוצתית "${order.title}" נפתחה!`,
+                    general_order_id: order.id 
                   });
 
                 if (shopError) {

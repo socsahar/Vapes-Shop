@@ -17,7 +17,10 @@
     "inspect-db": "node inspect-database.js",
     "cron": "node cron-general-orders.js",
     "cron:service": "node cron-service.js",
-    "test:scheduled-orders": "node test-scheduled-orders.js"
+    "test:scheduled-orders": "node test-scheduled-orders.js",
+    "email:process": "node automated-email-processor.js",
+    "email:monitor": "node email-monitor.js",
+    "email:stats": "node email-monitor.js --quick"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

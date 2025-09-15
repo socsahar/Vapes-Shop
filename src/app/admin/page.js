@@ -91,18 +91,7 @@ export default function AdminPage() {
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const [summaryEmailLoading, setSummaryEmailLoading] = useState(null);
     const [emailProgress, setEmailProgress] = useState({ current: 0, total: 0, percentage: 0 });
-    const [shopSettings, setShopSettings] = useState({
-        closedTitle: 'החנות סגורה כרגע',
-        closedMessage: 'החנות פועלת במודל הזמנות קבוצתיות בלבד\nכאשר המנהל יפתח הזמנה קבוצתית חדשה, תוכל להשתתף',
-        closedInstructions: [
-            '🕐 המנהל פותח הזמנה קבוצתית עם תאריך סגירה',
-            '📧 תקבל התראה באימייל כשההזמנה נפתחת',
-            '🛒 תוכל להצטרף ולהזמין מוצרים עד תאריך הסגירה',
-            '📦 ההזמנה נסגרת אוטומטית ונשלחת לספק'
-        ]
-    });
-    const [shopSettingsLoading, setShopSettingsLoading] = useState(false);
-    const [showShopSettingsModal, setShowShopSettingsModal] = useState(false);
+    // Removed shopSettings, shopSettingsLoading, showShopSettingsModal - no longer needed (using static settings)
     const [systemStatus, setSystemStatus] = useState(null);
     const [systemStatusLoading, setSystemStatusLoading] = useState(false);
     const [statusRefreshInterval, setStatusRefreshInterval] = useState(null);
@@ -1033,89 +1022,9 @@ export default function AdminPage() {
         }
     };
 
-    const fetchShopSettings = async () => {
-        try {
-            const response = await fetch('/api/shop/status');
-            if (response.ok) {
-                const data = await response.json();
-                if (data.message) {
-                    try {
-                        // Try to parse as JSON first (new structured format)
-                        const parsedSettings = JSON.parse(data.message);
-                        if (parsedSettings.closedTitle || parsedSettings.closedMessage || parsedSettings.closedInstructions) {
-                            setShopSettings(prev => ({
-                                ...prev,
-                                closedTitle: parsedSettings.closedTitle || prev.closedTitle,
-                                closedMessage: parsedSettings.closedMessage || prev.closedMessage,
-                                closedInstructions: parsedSettings.closedInstructions || prev.closedInstructions
-                            }));
-                        }
-                    } catch (jsonError) {
-                        // Fallback to old format (plain text)
-                        const [title, ...messageParts] = data.message.split('\n');
-                        setShopSettings(prev => ({
-                            ...prev,
-                            closedTitle: title || prev.closedTitle,
-                            closedMessage: messageParts.join('\n') || prev.closedMessage
-                        }));
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('Error fetching shop settings:', error);
-        }
-    };
-
-    const saveShopSettings = async () => {
-        setShopSettingsLoading(true);
-        try {
-            // Create structured shop settings object
-            const shopSettingsData = {
-                closedTitle: shopSettings.closedTitle,
-                closedMessage: shopSettings.closedMessage,
-                closedInstructions: shopSettings.closedInstructions.filter(instruction => instruction.trim() !== '')
-            };
-            
-            const response = await fetch('/api/shop/status', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: shopSettingsData })
-            });
-
-            if (response.ok) {
-                showToast('הגדרות החנות נשמרו בהצלחה!', 'success');
-                setShowShopSettingsModal(false);
-            } else {
-                showToast('שגיאה בשמירת הגדרות החנות', 'error');
-            }
-        } catch (error) {
-            console.error('Error saving shop settings:', error);
-            showToast('שגיאה בשמירת הגדרות החנות', 'error');
-        } finally {
-            setShopSettingsLoading(false);
-        }
-    };
-
-    const addInstruction = () => {
-        setShopSettings(prev => ({
-            ...prev,
-            closedInstructions: [...prev.closedInstructions, '']
-        }));
-    };
-
-    const removeInstruction = (index) => {
-        setShopSettings(prev => ({
-            ...prev,
-            closedInstructions: prev.closedInstructions.filter((_, i) => i !== index)
-        }));
-    };
-
-    const updateInstruction = (index, value) => {
-        setShopSettings(prev => ({
-            ...prev,
-            closedInstructions: prev.closedInstructions.map((item, i) => i === index ? value : item)
-        }));
-    };
+    // Shop settings functions removed - using static settings in shop page
+    // fetchShopSettings, saveShopSettings, addInstruction, removeInstruction, updateInstruction
+    // are no longer needed since shop closure message is now static
 
     const fetchSystemStatus = async (showLoader = true) => {
         try {
@@ -1227,7 +1136,7 @@ export default function AdminPage() {
         } else if (activeTab === 'dashboard') {
             fetchStats();
             fetchRecentActivity(true); // Initial load with spinner
-            fetchShopSettings();
+            // fetchShopSettings(); // Removed - shop settings now static
         } else if (activeTab === 'products') {
             fetchProducts();
         } else if (activeTab === 'orders') {
@@ -2642,151 +2551,13 @@ export default function AdminPage() {
                                 </div>
                             </div>
 
-                            {/* Shop Settings Section */}
-                            <div className="admin-section">
-                                <div className="admin-section-header">
-                                    <h3 className="admin-section-title">
-                                        <span className="admin-section-icon">🏡</span>
-                                        הגדרות חנות
-                                    </h3>
-                                    <p className="admin-section-subtitle">ערוך את הודעות ותצוגת החנות</p>
-                                </div>
-                                
-                                <div className="admin-settings-grid">
-                                    <div className="admin-settings-card">
-                                        <div className="admin-settings-card-header">
-                                            <h4>הודעת סגירת חנות</h4>
-                                            <p>ערוך את ההודעה שמוצגת ללקוחות כשהחנות סגורה</p>
-                                        </div>
-                                        <div className="admin-settings-card-content">
-                                            <div className="settings-info-grid">
-                                                <div className="settings-info-item">
-                                                    <span className="settings-info-label">כותרת:</span>
-                                                    <span className="settings-info-value">{shopSettings.closedTitle}</span>
-                                                </div>
-                                                <div className="settings-info-item">
-                                                    <span className="settings-info-label">הודעה:</span>
-                                                    <span className="settings-info-value">{shopSettings.closedMessage.slice(0, 50)}...</span>
-                                                </div>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowShopSettingsModal(true)}
-                                                className="admin-btn admin-btn-primary"
-                                            >
-                                                📝 ערוך הגדרות חנות
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                            {/* Shop Settings Section Removed - Using static settings in shop page */}
                         </div>
                     )}
                 </main>
             </div>
 
-            {/* Shop Settings Modal */}
-            {showShopSettingsModal && (
-                <div className="admin-modal-overlay" onClick={() => setShowShopSettingsModal(false)}>
-                    <div className="admin-modal admin-modal-wide" onClick={(e) => e.stopPropagation()}>
-                        <div className="admin-modal-header">
-                            <h3>🏡 עריכת הגדרות חנות</h3>
-                            <button 
-                                className="admin-modal-close"
-                                onClick={() => setShowShopSettingsModal(false)}
-                            >
-                                ✕
-                            </button>
-                        </div>
-                        <div className="admin-modal-body">
-                            <div className="form-group">
-                                <label htmlFor="closed_title">כותרת סגירת חנות</label>
-                                <input
-                                    type="text"
-                                    id="closed_title"
-                                    value={shopSettings.closedTitle}
-                                    onChange={(e) => setShopSettings(prev => ({...prev, closedTitle: e.target.value}))}
-                                    className="admin-input"
-                                    placeholder="החנות סגורה כרגע"
-                                />
-                                <small className="form-help">כותרת ראשית שתוצג בדף החנות הסגור</small>
-                            </div>
-
-                            <div className="form-group">
-                                <label htmlFor="closed_message">הודעת סגירה</label>
-                                <textarea
-                                    id="closed_message"
-                                    value={shopSettings.closedMessage}
-                                    onChange={(e) => setShopSettings(prev => ({...prev, closedMessage: e.target.value}))}
-                                    className="admin-input"
-                                    rows={4}
-                                    placeholder="החנות פועלת במודל הזמנות קבוצתיות בלבד..."
-                                />
-                                <small className="form-help">הודעה מפורטת שתוצג ללקוחות כשהחנות סגורה</small>
-                            </div>
-
-                            <div className="form-group">
-                                <label>הוראות ללקוחות</label>
-                                <div className="instructions-list">
-                                    {shopSettings.closedInstructions.map((instruction, index) => (
-                                        <div key={index} className="instruction-item">
-                                            <input
-                                                type="text"
-                                                value={instruction}
-                                                onChange={(e) => updateInstruction(index, e.target.value)}
-                                                className="admin-input instruction-input"
-                                                placeholder="הכנס הוראה ללקוח..."
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => removeInstruction(index)}
-                                                className="remove-instruction-btn"
-                                                title="מחק הוראה"
-                                            >
-                                                ✕
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={addInstruction}
-                                    className="admin-btn admin-btn-outline add-instruction-btn"
-                                >
-                                    + הוסף הוראה
-                                </button>
-                                <small className="form-help">הוראות שיוצגו ללקוחות כרשימת צעדים</small>
-                            </div>
-                        </div>
-                        <div className="admin-modal-footer">
-                            <button
-                                type="button"
-                                onClick={() => setShowShopSettingsModal(false)}
-                                className="admin-btn admin-btn-secondary"
-                            >
-                                בטל
-                            </button>
-                            <button
-                                type="button"
-                                onClick={saveShopSettings}
-                                disabled={shopSettingsLoading}
-                                className="admin-btn admin-btn-primary"
-                            >
-                                {shopSettingsLoading ? (
-                                    <>
-                                        <span className="spinner"></span>
-                                        שומר...
-                                    </>
-                                ) : (
-                                    <>
-                                        💾 שמור הגדרות
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Shop Settings Modal Removed - Using static settings in shop page */}
 
             {/* Edit User Modal */}
             {showEditModal && (

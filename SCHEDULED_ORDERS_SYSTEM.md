@@ -33,6 +33,8 @@ The scheduled general orders system has been completely rebuilt and is now produ
 ✅ **Email queue integration** - Proper email notifications via queue system  
 ✅ **Shop status automation** - Automatically opens/closes shop  
 ✅ **Error recovery** - Robust error handling with detailed logging  
+✅ **Automated email processing** - Processes email queue every cron run  
+✅ **Rate-limited email delivery** - Respects Resend API limits with batching  
 
 ### 📧 Email System
 **File: `src/app/api/admin/email-service/route.js`**
@@ -101,8 +103,10 @@ npm run cron
 2. Finds orders with `status='scheduled'` and `opening_time <= now`
 3. Updates status to `'open'`
 4. Opens shop with proper message
-5. Sends opening emails to all users
-6. Logs all activities to database
+5. Queues opening emails for all users
+6. Processes email queue with rate limiting
+7. Sends reminder emails for orders ending soon
+8. Logs all activities to database
 
 ### Real-Time Frontend
 1. Frontend polls shop status every 45 seconds

@@ -6,14 +6,14 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Production-ready email sending function - RESEND ONLY
+// Production-ready email sending function - RESEND ONLY (with better rate limiting)
 async function sendEmailWithProviders(mailOptions) {
     if (!process.env.RESEND_API_KEY) {
         throw new Error('RESEND_API_KEY is not configured. Email service unavailable.');
     }
 
     try {
-        console.log(`Sending email via Resend to: ${mailOptions.to}`);
+        console.log(`📧 Sending email via Resend to: ${mailOptions.to}`);
         
         // Prepare email data for Resend API
         const emailData = {
@@ -106,12 +106,30 @@ export async function GET() {
     console.log(`Found ${allPendingEmails.length} pending emails to process`);
     const pendingEmails = allPendingEmails;
 
+    // Rate limiting for Resend free tier: max 2 emails per second
+    const RATE_LIMIT_DELAY = 1000; // 1 second delay between emails for free tier
+    const MAX_EMAILS_PER_BATCH = 5; // Process max 5 emails per API call to avoid timeout
+
+    // Process only a limited batch to avoid rate limiting
+    const emailsToProcess = pendingEmails.slice(0, MAX_EMAILS_PER_BATCH);
+    console.log(`Processing ${emailsToProcess.length} emails (rate limited batch)`);
+
     let processed = 0;
     let errors = [];
+    let serviceStats = { 'Resend API': 0 };
 
-    for (const emailLog of pendingEmails) {
+    for (const emailLog of emailsToProcess) {
       try {
-        await processEmail(emailLog);
+        // Add delay between emails to respect rate limits
+        if (processed > 0) {
+          console.log(`⏱️ Waiting ${RATE_LIMIT_DELAY}ms for rate limiting...`);
+          await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
+        }
+
+        const result = await processEmail(emailLog);
+        if (result.service) {
+          serviceStats[result.service] = (serviceStats[result.service] || 0) + 1;
+        }
         processed++;
       } catch (error) {
         console.error(`Error processing email ${emailLog.id}:`, error);
@@ -140,8 +158,16 @@ export async function GET() {
     }
 
     return NextResponse.json({
-      message: `עובדו ${processed} אימיילים`,
+      message: `עובדו ${processed} אימיילים מתוך ${allPendingEmails.length} ממתינים`,
       processed,
+      pending: allPendingEmails.length - processed,
+      rate_limited: true,
+      service_stats: serviceStats,
+      services_used: Object.entries(serviceStats)
+        .filter(([_, count]) => count > 0)
+        .map(([service, count]) => `${service}: ${count}`)
+        .join(', ') || 'None',
+      next_batch_info: allPendingEmails.length > MAX_EMAILS_PER_BATCH ? 'יש עוד אימיילים ממתינים - הפעל שוב לעיבוד נוסף' : null,
       errors: errors.length > 0 ? errors : undefined
     });
 
