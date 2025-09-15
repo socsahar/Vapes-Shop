@@ -246,8 +246,12 @@ export async function POST(request) {
 
     // Queue opening email notification to admin
     try {
-      // Get admin email from environment or use default
-      const adminEmail = process.env.ADMIN_EMAIL || 'admin@vapes-shop.top';
+      // Get admin email from environment
+      const adminEmail = process.env.ADMIN_EMAIL;
+      if (!adminEmail) {
+        console.error('ADMIN_EMAIL environment variable not set, skipping admin notification');
+        return;
+      }
       
       const { error: emailError } = await supabase
         .from('email_logs')

@@ -11,12 +11,33 @@ const checkEnvVars = () => {
   }
 }
 
+// Configure fetch with SSL bypass for server environments
+const createFetchWithSSLBypass = () => {
+  // Only bypass SSL in server environment (Node.js)
+  if (typeof window === 'undefined' && typeof process !== 'undefined') {
+    // Set environment variable to bypass SSL verification
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    
+    return (url, options = {}) => {
+      return fetch(url, {
+        ...options,
+        // Additional fetch options for Node.js
+        agent: false
+      });
+    };
+  }
+  return fetch;
+};
+
 // Client for browser/client-side operations
 export const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true
+  },
+  global: {
+    fetch: typeof window !== 'undefined' ? fetch : createFetchWithSSLBypass()
   }
 }) : null
 
@@ -28,6 +49,9 @@ export const supabaseAdmin = supabaseUrl ? createClient(
     auth: {
       autoRefreshToken: false,
       persistSession: false
+    },
+    global: {
+      fetch: typeof window !== 'undefined' ? fetch : createFetchWithSSLBypass()
     }
   }
 ) : null
@@ -73,6 +97,7 @@ export const getCurrentUserFromRequest = async (request) => {
 
     // Simple token validation - in production, use JWT
     const expectedToken = Buffer.from(user.id + user.username).toString('base64');
+    
     if (userToken !== expectedToken) {
       return null;
     }

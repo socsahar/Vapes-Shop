@@ -116,21 +116,9 @@ export async function POST(request) {
           console.log(`Queued general order summary email for order: ${order.title}`);
         }
 
-        // Automatically trigger email processing for closure notifications
-        try {
-          console.log('Triggering automatic email processing for closure notification...');
-          const emailServiceResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/email-service`, {
-            method: 'GET'
-          });
-          
-          if (emailServiceResponse.ok) {
-            const emailResult = await emailServiceResponse.json();
-            console.log('Auto-close email processing result:', emailResult);
-          }
-        } catch (autoEmailError) {
-          console.error('Error in automatic closure email processing:', autoEmailError);
-        }
-
+        // Note: Email processing will be handled by the email service independently
+        // No need to trigger it manually from here as it runs on its own schedule
+        console.log('Order closed successfully. Email processing will be handled by email service.');
       } catch (shopCloseError) {
         console.error('Error in shop closure process:', shopCloseError);
       }

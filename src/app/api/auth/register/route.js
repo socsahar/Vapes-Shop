@@ -524,7 +524,7 @@ function generateWelcomeEmailTemplate(user) {
             <div class="footer">
                 <div class="logo">🌬️ הוייפ שופ</div>
                 <p><strong>החנות המובילה למוצרי ויפינג באיכות גבוהה בישראל</strong></p>
-                <p>📧 ${process.env.ADMIN_EMAIL || 'info@vapes-shop.top'} | 📱 <a href="${whatsappGroupUrl}" style="color: #4c51bf;">קבוצת וואטסאפ</a></p>
+                <p>📧 ${process.env.ADMIN_EMAIL || 'מנהל החנות'} | 📱 <a href="${whatsappGroupUrl}" style="color: #4c51bf;">קבוצת וואטסאפ</a></p>
                 <p>🌐 <a href="${shopUrl}" style="color: #4c51bf;">vapes-shop.top</a></p>
                 <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
                 <p style="font-size: 12px; color: #a0aec0;">

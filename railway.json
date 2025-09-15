@@ -5,5 +5,12 @@
   },
   "deploy": {
     "startCommand": "npm start"
+  },
+  "environments": {
+    "production": {
+      "variables": {
+        "NODE_ENV": "production"
+      }
+    }
   }
 }

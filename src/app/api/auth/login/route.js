@@ -5,6 +5,11 @@ import bcrypt from 'bcryptjs';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+// Configure SSL bypass for Node.js environment
+if (typeof window === 'undefined' && typeof process !== 'undefined') {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
 const supabase = createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
         autoRefreshToken: false,

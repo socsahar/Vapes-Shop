@@ -137,13 +137,16 @@ export async function POST(request) {
 
     await browser.close();
 
+    // Ensure we have a proper Buffer
+    const properBuffer = Buffer.from(pdfBuffer);
+
     // Return PDF as response
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(properBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
-        'Content-Length': pdfBuffer.length.toString()
+        'Content-Length': properBuffer.length.toString()
       }
     });
 
@@ -324,15 +327,17 @@ function generateAdminReportHTML(order, participants) {
         table {
           width: 100%;
           border-collapse: collapse;
+          table-layout: auto;
         }
         
         th {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: white;
-          padding: 20px 15px;
+          padding: 15px 10px;
           font-weight: 600;
-          font-size: 1.1rem;
+          font-size: 1rem;
           text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+          white-space: nowrap;
         }
         
         .participant-row {
@@ -345,19 +350,20 @@ function generateAdminReportHTML(order, participants) {
         
         .participant-row:hover {
           background-color: #e3f2fd;
-          transform: scale(1.01);
         }
         
         td {
-          padding: 20px 15px;
+          padding: 15px 10px;
           border-bottom: 1px solid #e0e0e0;
           vertical-align: top;
+          word-wrap: break-word;
         }
         
         .user-name {
           font-weight: 600;
           color: #667eea;
           font-size: 1.1rem;
+          line-height: 1.4;
         }
         
         .user-phone {
@@ -366,36 +372,41 @@ function generateAdminReportHTML(order, participants) {
         }
         
         .items-container {
-          max-height: 200px;
-          overflow-y: auto;
+          max-height: none;
+          overflow-y: visible;
+          max-width: 300px;
         }
         
         .item-card {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: white;
-          padding: 10px 15px;
-          margin-bottom: 8px;
-          border-radius: 10px;
+          padding: 8px 12px;
+          margin-bottom: 6px;
+          border-radius: 8px;
           box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
           display: flex;
           justify-content: space-between;
           align-items: center;
+          flex-wrap: wrap;
         }
         
         .item-name {
           font-weight: 500;
           flex: 1;
+          min-width: 120px;
+          line-height: 1.3;
         }
         
         .item-details {
           font-size: 0.9rem;
           opacity: 0.9;
           margin-right: 10px;
+          white-space: nowrap;
         }
         
         .amount {
           font-weight: 700;
-          font-size: 1.2rem;
+          font-size: 1.1rem;
           color: #e74c3c;
           text-align: center;
         }
@@ -555,7 +566,7 @@ function generateSupplierReportHTML(order, participants) {
     (participant.order_items || []).forEach((item, iIndex) => {
       console.log(`Item ${iIndex}:`, JSON.stringify(item, null, 2));
       const productId = item.product_id;
-      const productName = item.product?.name || 'מוצר לא ידוע';
+      const productName = item.products?.name || 'מוצר לא ידוע';
       const quantity = parseInt(item.quantity) || 0;
       
       console.log(`Product ID: ${productId}, Name: ${productName}, Quantity: ${quantity}`);
@@ -564,7 +575,7 @@ function generateSupplierReportHTML(order, participants) {
         productSummary[productId] = {
           name: productName,
           totalQuantity: 0,
-          category: item.product?.category || 'כללי'
+          category: item.products?.category || 'כללי'
         };
       }
       productSummary[productId].totalQuantity += quantity;
@@ -720,15 +731,17 @@ function generateSupplierReportHTML(order, participants) {
         table {
           width: 100%;
           border-collapse: collapse;
+          table-layout: auto;
         }
         
         th {
           background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
           color: white;
-          padding: 20px 15px;
+          padding: 15px 10px;
           font-weight: 600;
-          font-size: 1.1rem;
+          font-size: 1rem;
           text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+          white-space: nowrap;
         }
         
         .product-row {
@@ -741,36 +754,42 @@ function generateSupplierReportHTML(order, participants) {
         
         .product-row:hover {
           background-color: #e8f8f5;
-          transform: scale(1.01);
         }
         
         td {
-          padding: 20px 15px;
+          padding: 15px 10px;
           border-bottom: 1px solid #e0e0e0;
           vertical-align: middle;
+          word-wrap: break-word;
+          max-width: 250px;
         }
         
         .product-name {
           font-weight: 600;
           color: #27ae60;
           font-size: 1.1rem;
+          line-height: 1.4;
+          width: 45%;
         }
         
         .product-category {
           color: #666;
           font-size: 1rem;
           text-align: center;
+          width: 25%;
         }
         
         .product-quantity {
           font-weight: 700;
-          font-size: 1.3rem;
+          font-size: 1.2rem;
           color: #e74c3c;
           text-align: center;
           background: linear-gradient(135deg, #ff7675 0%, #fd79a8 100%);
           color: white;
-          border-radius: 10px;
-          padding: 10px;
+          border-radius: 8px;
+          padding: 8px 12px;
+          width: 30%;
+          min-width: 80px;
         }
         
         .contact-info {

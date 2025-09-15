@@ -46,7 +46,6 @@ async function sendEmailWithProviders(mailOptions) {
 // Process a single queued email
 export async function processQueuedEmails() {
     try {
-        console.log('Processing pending emails directly...');
 
         // Get pending email notifications
         const { data: pendingEmails, error } = await supabase
@@ -70,9 +69,14 @@ export async function processQueuedEmails() {
 
         for (const emailLog of pendingEmails) {
             try {
-                await processEmail(emailLog);
-                processed++;
-                console.log(`Processed email ${emailLog.id} to ${emailLog.recipient_email}`);
+                const result = await processEmail(emailLog);
+                if (result && result.success !== false) {
+                    processed++;
+                    console.log(`Processed email ${emailLog.id} to ${emailLog.recipient_email}`);
+                } else {
+                    // Email was handled but not sent (e.g., invalid address)
+                    console.log(`Skipped email ${emailLog.id}: ${result?.reason || 'Unknown reason'}`);
+                }
             } catch (error) {
                 console.error(`Error processing email ${emailLog.id}:`, error);
                 errors.push({ id: emailLog.id, error: error.message });
@@ -123,16 +127,18 @@ async function processEmail(emailLog) {
     // Validate email address format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(emailLog.recipient_email)) {
-        console.log(`Invalid email address: ${emailLog.recipient_email}`);
+        console.log(`Invalid email address detected: ${emailLog.recipient_email} - marking as permanently failed`);
         await supabase
             .from('email_logs')
             .update({
-                status: 'error',
-                error_message: 'Invalid email address format',
+                status: 'permanently_failed',
+                error_message: `Invalid email address format: ${emailLog.recipient_email}`,
                 sent_at: new Date().toISOString()
             })
             .eq('id', emailLog.id);
-        throw new Error(`Invalid email address: ${emailLog.recipient_email}`);
+        
+        // Return success to continue processing other emails, don't throw error
+        return { success: false, reason: 'Invalid email address - marked as permanently failed' };
     }
 
     // Handle order confirmations
@@ -250,13 +256,22 @@ async function processOrderConfirmation(emailLog) {
                 
             orderItems = items || [];
             
+            // Get the general order information for the deadline
+            const { data: generalOrder, error: generalOrderError } = await supabase
+                .from('general_orders')
+                .select('title, description, deadline')
+                .eq('id', generalOrderId)
+                .single();
+            
             orderData = {
                 orderNumber: order.id,
                 customerName: order.users?.full_name || 'לקוח יקר',
                 totalAmount: order.total_amount,
                 status: order.status,
-                generalOrderTitle: 'הזמנה קבוצתית',
-                orderTitle: 'הזמנה קבוצתית'
+                generalOrderTitle: generalOrder?.title || 'הזמנה קבוצתית',
+                orderTitle: generalOrder?.title || 'הזמנה קבוצתית',
+                orderDescription: generalOrder?.description || generalOrder?.title || 'הזמנה קבוצתית',
+                deadline: generalOrder?.deadline
             };
         }
 
@@ -273,15 +288,6 @@ async function processOrderConfirmation(emailLog) {
         // Replace template variables
         let subject = emailTemplate.subject_template || 'אישור הזמנה';
         let htmlContent = emailTemplate.body_template || '';
-        
-        // Template variables replacement
-        console.log('🔍 emailProcessor.js: Order data retrieved:', {
-            orderTitle: orderData.orderTitle,
-            orderDescription: orderData.orderDescription,
-            customerName: orderData.customerName,
-            deadline: orderData.deadline,
-            totalItems: orderItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
-        });
         
         const templateVars = {
             // Basic order info
@@ -307,8 +313,6 @@ async function processOrderConfirmation(emailLog) {
             '{{shop_url}}': `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/shop`,
             '{{current_year}}': new Date().getFullYear().toString()
         };
-        
-        console.log('🔄 emailProcessor.js: Template variables prepared:', Object.keys(templateVars));
         
         // Replace all template variables in subject and body
         Object.keys(templateVars).forEach(key => {

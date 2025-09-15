@@ -281,7 +281,7 @@ CREATE POLICY "System can manage reset tokens" ON password_reset_tokens
 -- Insert default admin user (change password after first login)
 INSERT INTO users (email, password_hash, full_name, role, force_password_change) 
 VALUES (
-    'admin@vapeshop.com', 
+    'admin@yourshop.com', 
     '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LeUcLgYInusS9a2hq', -- 'admin123'
     'מנהל המערכת',
     'admin',

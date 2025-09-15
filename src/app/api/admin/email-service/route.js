@@ -214,7 +214,10 @@ async function processTemplatedEmail(emailLog, templateType) {
     
     // Handle SYSTEM_ recipients by converting to admin email
     if (recipientEmail.startsWith('SYSTEM_')) {
-      recipientEmail = process.env.ADMIN_EMAIL || 'admin@vapes-shop.top';
+      recipientEmail = process.env.ADMIN_EMAIL;
+      if (!recipientEmail) {
+        throw new Error('ADMIN_EMAIL environment variable is required for system notifications');
+      }
       isAdminRecipient = true; // SYSTEM_ emails are always admin emails
     } else {
       // Check if recipient is an admin user

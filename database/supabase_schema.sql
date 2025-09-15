@@ -461,7 +461,7 @@ BEGIN
         INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('shop_name', 'VapeShop Pro', 'שם החנות');
     END IF;
     IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'shop_email') THEN
-        INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('shop_email', 'admin@vapeshop.com', 'כתובת אימייל של החנות');
+        INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('shop_email', 'admin@yourshop.com', 'כתובת אימייל של החנות');
     END IF;
     IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'shop_phone') THEN
         INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('shop_phone', '+972-50-123-4567', 'טלפון החנות');
@@ -496,9 +496,9 @@ END $$;
 -- Note: In production, change this password immediately
 DO $$ 
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'admin@vapeshop.com' OR username = 'admin') THEN
+    IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'admin@yourshop.com' OR username = 'admin') THEN
         INSERT INTO users (username, password, email, password_hash, full_name, role) VALUES
-        ('admin', 'admin123', 'admin@vapeshop.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LeKrZKMj8.4PTBDbG', 'מנהל מערכת', 'admin');
+        ('admin', 'admin123', 'admin@yourshop.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LeKrZKMj8.4PTBDbG', 'מנהל מערכת', 'admin');
     END IF;
 END $$;
 

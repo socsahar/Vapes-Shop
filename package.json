@@ -14,7 +14,8 @@
     "type-check": "tsc --noEmit",
     "prepare-prod": "node prepare-production.js",
     "production-setup": "node production-setup.js",
-    "inspect-db": "node inspect-database.js"
+    "inspect-db": "node inspect-database.js",
+    "cron": "node cron-general-orders.js"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

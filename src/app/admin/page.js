@@ -75,6 +75,8 @@ export default function AdminPage() {
     const [testEmailAddress, setTestEmailAddress] = useState('');
     const [testEmailType, setTestEmailType] = useState('password_reset');
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
+    const [summaryEmailLoading, setSummaryEmailLoading] = useState(null);
+    const [emailProgress, setEmailProgress] = useState({ current: 0, total: 0, percentage: 0 });
     const [shopSettings, setShopSettings] = useState({
         closedTitle: 'החנות סגורה כרגע',
         closedMessage: 'החנות פועלת במודל הזמנות קבוצתיות בלבד\nכאשר המנהל יפתח הזמנה קבוצתית חדשה, תוכל להשתתף',
@@ -656,6 +658,86 @@ export default function AdminPage() {
             showToast('שגיאה ביצירת דוח ספק', 'error');
         } finally {
             setGeneralOrderLoading(false);
+        }
+    };
+
+    const handleSendSummaryEmail = async (order) => {
+        if (!confirm(`האם אתה בטוח שברצונך לשלוח אימייל סיכום למנהלים עבור הזמנה: "${order.title}"?\n\nהאימייל יכלול את שני הדוחות PDF (מנהל וספק).`)) {
+            return;
+        }
+
+        try {
+            setSummaryEmailLoading(order.id);
+            setEmailProgress({ current: 0, total: 0, percentage: 0 });
+            
+            // First, let's get the number of admins to show proper progress
+            const adminResponse = await fetch('/api/admin/users');
+            let totalAdmins = 1; // default fallback
+            if (adminResponse.ok) {
+                const adminData = await adminResponse.json();
+                const admins = adminData.users?.filter(user => user.role === 'admin') || [];
+                totalAdmins = Math.max(1, admins.length);
+            }
+
+            // Set initial progress
+            setEmailProgress({ current: 0, total: totalAdmins, percentage: 0 });
+
+            // Simulate progress during PDF generation (first 30%)
+            let currentProgress = 0;
+            const progressInterval = setInterval(() => {
+                if (currentProgress < 30) {
+                    currentProgress += 2;
+                    setEmailProgress(prev => ({ 
+                        ...prev, 
+                        percentage: currentProgress 
+                    }));
+                }
+            }, 100);
+
+            const response = await fetch('/api/admin/send-summary-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    orderId: order.id
+                })
+            });
+
+            clearInterval(progressInterval);
+
+            const result = await response.json();
+
+            if (response.ok) {
+                // Show completion progress with real numbers
+                const finalProgress = {
+                    current: result.recipients || 0,
+                    total: result.totalAdmins || totalAdmins,
+                    percentage: result.totalAdmins > 0 ? Math.round(((result.recipients || 0) / result.totalAdmins) * 100) : 100
+                };
+                
+                setEmailProgress(finalProgress);
+                
+                // Keep progress visible for 3 seconds before clearing
+                setTimeout(() => {
+                    setEmailProgress({ current: 0, total: 0, percentage: 0 });
+                }, 3000);
+
+                if (result.failedSends && result.failedSends.length > 0) {
+                    showToast(`📧 אימיילים נשלחו ל-${result.recipients} מנהלים\n❌ ${result.failedSends.length} נכשלו: ${result.failedSends.map(f => f.name).join(', ')}`, 'warning');
+                } else {
+                    showToast(`✅ אימייל סיכום נשלח בהצלחה ל-${result.recipients} מנהלים!\n📎 כולל ${result.attachments} דוחות PDF`, 'success');
+                }
+            } else {
+                setEmailProgress({ current: 0, total: 0, percentage: 0 });
+                showToast(`❌ שגיאה בשליחת אימייל הסיכום: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error sending summary email:', error);
+            setEmailProgress({ current: 0, total: 0, percentage: 0 });
+            showToast('❌ שגיאה בשליחת אימייל הסיכום', 'error');
+        } finally {
+            setSummaryEmailLoading(null);
         }
     };
 
@@ -1902,6 +1984,47 @@ export default function AdminPage() {
                                                                     style={{backgroundColor: '#f3e5f5', color: '#7b1fa2'}}
                                                                 >
                                                                     📦
+                                                                </button>
+                                                                <button 
+                                                                    className="admin-btn-small email"
+                                                                    onClick={() => handleSendSummaryEmail(order)}
+                                                                    title="שלח אימייל סיכום למנהלים (עם דוחות PDF)"
+                                                                    style={{
+                                                                        backgroundColor: summaryEmailLoading === order.id ? '#f5f5f5' : '#e8f5e8', 
+                                                                        color: summaryEmailLoading === order.id ? '#666' : '#2e7d32',
+                                                                        position: 'relative',
+                                                                        minWidth: '40px',
+                                                                        minHeight: '40px'
+                                                                    }}
+                                                                    disabled={summaryEmailLoading === order.id}
+                                                                >
+                                                                    {summaryEmailLoading === order.id ? (
+                                                                        <div style={{ 
+                                                                            display: 'flex', 
+                                                                            flexDirection: 'column', 
+                                                                            alignItems: 'center', 
+                                                                            justifyContent: 'center',
+                                                                            fontSize: '10px',
+                                                                            lineHeight: '1'
+                                                                        }}>
+                                                                            <div style={{
+                                                                                width: '20px',
+                                                                                height: '20px',
+                                                                                border: '2px solid #e3e3e3',
+                                                                                borderTop: '2px solid #2e7d32',
+                                                                                borderRadius: '50%',
+                                                                                animation: 'spin 1s linear infinite',
+                                                                                marginBottom: '2px'
+                                                                            }}></div>
+                                                                            {emailProgress.total > 0 && (
+                                                                                <span style={{ fontSize: '8px', color: '#2e7d32', fontWeight: 'bold' }}>
+                                                                                    {emailProgress.percentage}%
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    ) : (
+                                                                        '📧'
+                                                                    )}
                                                                 </button>
                                                                 <button 
                                                                     className="admin-btn-small delete"
