@@ -482,41 +482,188 @@ async function sendOrderOpenNotifications(order) {
 }
 
 async function sendOrderCloseNotifications(order) {
-  // Add to email queue for closing notifications  
+  console.log('📧 Processing automatic closure emails for order:', order.id);
+  
   try {
-    const { data: admins, error } = await supabase
+    // Get all items for this order with valid user_ids
+    const { data: orderItems, error: itemsError } = await supabase
+      .from('order_items')
+      .select('*')
+      .eq('order_id', order.id)
+      .not('user_id', 'is', null);
+
+    if (itemsError) {
+      throw new Error(`Error fetching order items: ${itemsError.message}`);
+    }
+
+    if (!orderItems || orderItems.length === 0) {
+      console.log('⚠️ No items with users found for this order - sending admin notification only');
+      
+      // Queue system notification for empty order
+      await supabase
+        .from('email_queue')
+        .insert({
+          recipient_email: 'SYSTEM_ORDER_CLOSED',
+          subject: `סיכום הזמנה קבוצתית ריקה - ${order.title || order.name}`,
+          email_type: 'general_order_close',
+          status: 'pending',
+          order_id: order.id,
+          created_at: new Date().toISOString()
+        });
+
+      console.log('📧 Queued system notification for empty order');
+      return true;
+    }
+
+    // Get unique users who participated
+    const userIds = [...new Set(orderItems.map(item => item.user_id))];
+    const { data: users, error: usersError } = await supabase
       .from('users')
       .select('id, email, full_name')
-      .eq('role', 'admin')
-      .eq('is_active', true);
+      .in('id', userIds);
 
-    if (error || !admins) {
-      throw new Error(`Error fetching admins: ${error?.message || 'No admins found'}`);
+    if (usersError || !users || users.length === 0) {
+      throw new Error(`Error fetching users: ${usersError?.message || 'No users found'}`);
     }
 
-    // Add emails to queue for each admin
-    const emailsToQueue = admins.map(admin => ({
-      recipient_email: admin.email,
-      recipient_name: admin.full_name,
-      subject: `🔒 הזמנה קבוצתית נסגרה אוטומטית - ${order.title}`,
-      html_body: `<p>שלום ${admin.full_name},</p><p>הזמנה קבוצתית נסגרה אוטומטית: <strong>${order.title}</strong></p>`,
-      email_type: 'general_order_close',
-      user_id: admin.id,
-      general_order_id: order.id,
-      priority: 2
-    }));
+    console.log(`👥 Found ${users.length} participants to notify`);
 
-    const { error: queueError } = await supabase
+    // Get products for email content
+    const productIds = [...new Set(orderItems.map(item => item.product_id))];
+    const { data: products, error: productsError } = await supabase
+      .from('products')
+      .select('id, name, price')
+      .in('id', productIds);
+
+    const productLookup = {};
+    (products || []).forEach(product => {
+      productLookup[product.id] = product;
+    });
+
+    // Get email template
+    const { data: template, error: templateError } = await supabase
+      .from('email_templates')
+      .select('*')
+      .eq('template_name', 'general_order_closed')
+      .single();
+
+    // Queue closure emails for each participant
+    const emailPromises = users.map(async (user) => {
+      const userItems = orderItems.filter(item => item.user_id === user.id);
+      
+      if (userItems.length === 0) return { success: false, user: user.email, reason: 'No items' };
+
+      const userTotal = userItems.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+      const orderName = order.title || order.name || 'הזמנה קבוצתית';
+      
+      const emailSubject = template ? 
+        template.subject_template.replace('{order_name}', orderName) :
+        `הזמנה קבוצתית נסגרה - ${orderName}`;
+
+      const { error: queueError } = await supabase
+        .from('email_queue')
+        .insert({
+          recipient_email: user.email,
+          subject: emailSubject,
+          email_type: 'general_order_close',
+          template_id: template?.id || null,
+          status: 'pending',
+          order_id: order.id,
+          created_at: new Date().toISOString()
+        });
+
+      if (queueError) {
+        console.error(`❌ Error queueing email for ${user.email}:`, queueError);
+        return { success: false, user: user.email, error: queueError };
+      } else {
+        return { success: true, user: user.email, total: userTotal };
+      }
+    });
+
+    // Queue system notification
+    const orderName = order.title || order.name || 'הזמנה קבוצתית';
+    const systemSubject = template ?
+      template.subject_template.replace('{order_name}', orderName) :
+      `סיכום הזמנה קבוצתית - ${orderName}`;
+
+    const { error: systemError } = await supabase
       .from('email_queue')
-      .insert(emailsToQueue);
+      .insert({
+        recipient_email: 'SYSTEM_ORDER_CLOSED',
+        subject: systemSubject,
+        email_type: 'general_order_close',
+        template_id: template?.id || null,
+        status: 'pending',
+        order_id: order.id,
+        created_at: new Date().toISOString()
+      });
 
-    if (queueError) {
-      throw new Error(`Error queuing emails: ${queueError.message}`);
-    }
+    // Wait for all emails to be queued
+    const results = await Promise.all(emailPromises);
+    const successful = results.filter(r => r.success);
 
-    console.log(`📧 Queued ${emailsToQueue.length} closing notification emails`);
+    console.log(`📧 Queued ${successful.length} user closure emails + 1 system notification`);
+    
+    await logActivity(
+      'cron_closure_emails',
+      `Automatic closure emails queued: ${successful.length} users for order: ${orderName}`,
+      'completed',
+      null,
+      order.id,
+      { 
+        order_title: orderName,
+        participants: successful.length,
+        system_notification: systemError ? 'failed' : 'queued',
+        processed_at: new Date().toISOString()
+      }
+    );
+
+    return successful.length > 0;
+
   } catch (error) {
-    console.error('❌ Error queuing closing notifications:', error);
+    console.error('❌ Error processing automatic closure emails:', error);
+    
+    await logActivity(
+      'cron_closure_emails',
+      `Failed to process closure emails for: ${order.title || order.name} - ${error.message}`,
+      'failed',
+      null,
+      order.id,
+      { 
+        order_title: order.title || order.name,
+        error: error.message
+      }
+    );
+    
+    // Fallback to legacy admin notification
+    console.log('📧 Falling back to legacy admin notifications...');
+    try {
+      const { data: admins } = await supabase
+        .from('users')
+        .select('id, email, full_name')
+        .eq('role', 'admin')
+        .eq('is_active', true);
+
+      if (admins && admins.length > 0) {
+        const emailsToQueue = admins.map(admin => ({
+          recipient_email: admin.email,
+          recipient_name: admin.full_name,
+          subject: `🔒 הזמנה קבוצתית נסגרה אוטומטית - ${order.title || order.name}`,
+          html_body: `<p>שלום ${admin.full_name},</p><p>הזמנה קבוצתית נסגרה אוטומטית: <strong>${order.title || order.name}</strong></p>`,
+          email_type: 'general_order_close',
+          user_id: admin.id,
+          general_order_id: order.id,
+          priority: 2
+        }));
+
+        await supabase.from('email_queue').insert(emailsToQueue);
+        console.log(`📧 Queued ${emailsToQueue.length} fallback admin notification emails`);
+      }
+    } catch (fallbackError) {
+      console.error('❌ Fallback admin notifications also failed:', fallbackError);
+    }
+    
+    return false;
   }
 }
 

@@ -84,6 +84,20 @@ export async function POST(request) {
           }
         }
 
+        // Trigger automatic closure emails for all participants
+        try {
+          // Import the closure email system
+          const { processOrderClosure } = require('../../../../../auto_closure_emails.cjs');
+          
+          console.log('🎯 Triggering automatic closure emails for expired order:', order.id);
+          await processOrderClosure(order.id);
+          
+          console.log('✅ Automatic closure emails processed for:', order.title);
+        } catch (emailProcessError) {
+          console.error('❌ Error processing automatic closure emails:', emailProcessError);
+        }
+
+        // Legacy system notification (keeping for compatibility)
         // Queue closure notification email
         const { error: emailError } = await supabase
           .from('email_logs')

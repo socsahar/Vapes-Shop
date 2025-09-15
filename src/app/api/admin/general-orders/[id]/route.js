@@ -114,8 +114,21 @@ export async function PUT(request, context) {
         console.error('Error closing shop:', shopError);
       }
 
-      // Queue closure email if not already sent
+      // Trigger automatic closure emails for all participants
       if (!updatedOrder.closure_email_sent) {
+        try {
+          // Import the closure email system
+          const { processOrderClosure } = require('../../../../../../auto_closure_emails.cjs');
+          
+          console.log('🎯 Triggering automatic closure emails for order:', id);
+          await processOrderClosure(id);
+          
+          console.log('✅ Automatic closure emails processed');
+        } catch (error) {
+          console.error('❌ Error processing automatic closure emails:', error);
+        }
+
+        // Legacy system notification (keeping for compatibility)
         const { error: emailError } = await supabase
           .from('email_logs')
           .insert([{
