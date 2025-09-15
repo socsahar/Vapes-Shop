@@ -107,8 +107,8 @@ export async function GET() {
     const pendingEmails = allPendingEmails;
 
     // Rate limiting for Resend free tier: max 2 emails per second
-    const RATE_LIMIT_DELAY = 1000; // 1 second delay between emails for free tier
-    const MAX_EMAILS_PER_BATCH = 5; // Process max 5 emails per API call to avoid timeout
+    const RATE_LIMIT_DELAY = 600; // 600ms delay between emails (safer than 1000ms for 2/sec limit)
+    const MAX_EMAILS_PER_BATCH = 3; // Process max 3 emails per API call to avoid rate limiting
 
     // Process only a limited batch to avoid rate limiting
     const emailsToProcess = pendingEmails.slice(0, MAX_EMAILS_PER_BATCH);
@@ -127,7 +127,7 @@ export async function GET() {
         }
 
         const result = await processEmail(emailLog);
-        if (result.service) {
+        if (result && result.service) {
           serviceStats[result.service] = (serviceStats[result.service] || 0) + 1;
         }
         processed++;
@@ -135,7 +135,14 @@ export async function GET() {
         console.error(`Error processing email ${emailLog.id}:`, error);
         errors.push({ id: emailLog.id, error: error.message });
         
-        // Mark as failed in the correct table
+        // Check if it's a rate limiting error and handle differently
+        if (error.message && error.message.includes('rate_limit_exceeded')) {
+          console.log(`🚫 Rate limiting detected - waiting longer before next batch`);
+          // Don't mark as permanently failed for rate limit errors, just skip this batch
+          break;
+        }
+        
+        // Mark as failed in the correct table for non-rate-limit errors
         const tableName = emailLog.source || 'email_logs';
         const updateData = {
           error_message: error.message,
