@@ -250,39 +250,39 @@ export async function POST(request) {
       const adminEmail = process.env.ADMIN_EMAIL;
       if (!adminEmail) {
         console.error('ADMIN_EMAIL environment variable not set, skipping admin notification');
-        return;
-      }
-      
-      const { error: emailError } = await supabase
-        .from('email_logs')
-        .insert([{
-          recipient_email: adminEmail,
-          subject: `הזמנה קבוצתית חדשה נפתחה - ${title}`,
-          body: `GENERAL_ORDER_OPENED:${newOrder.id}`,
-          status: 'failed' // Use 'failed' as queue status, will be changed to 'sent' when processed
-        }]);
-
-      if (emailError) {
-        console.error('Error queueing email notification:', emailError);
+        // Continue to return the success response below
       } else {
-        console.log('Email notification queued successfully');
-        
-        // Automatically trigger email processing
-        try {
-          console.log('Triggering automatic email processing...');
-          const emailServiceResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/admin/email-service`, {
-            method: 'GET'
-          });
+        const { error: emailError } = await supabase
+          .from('email_logs')
+          .insert([{
+            recipient_email: adminEmail,
+            subject: `הזמנה קבוצתית חדשה נפתחה - ${title}`,
+            body: `GENERAL_ORDER_OPENED:${newOrder.id}`,
+            status: 'failed' // Use 'failed' as queue status, will be changed to 'sent' when processed
+          }]);
+
+        if (emailError) {
+          console.error('Error queueing email notification:', emailError);
+        } else {
+          console.log('Email notification queued successfully');
           
-          if (emailServiceResponse.ok) {
-            const emailResult = await emailServiceResponse.json();
-            console.log('Automatic email processing result:', emailResult);
-          } else {
-            console.error('Email service request failed:', emailServiceResponse.status);
+          // Automatically trigger email processing
+          try {
+            console.log('Triggering automatic email processing...');
+            const emailServiceResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/admin/email-service`, {
+              method: 'GET'
+            });
+            
+            if (emailServiceResponse.ok) {
+              const emailResult = await emailServiceResponse.json();
+              console.log('Automatic email processing result:', emailResult);
+            } else {
+              console.error('Email service request failed:', emailServiceResponse.status);
+            }
+          } catch (autoEmailError) {
+            console.error('Error in automatic email processing:', autoEmailError);
+            // Don't fail the order creation if email processing fails
           }
-        } catch (autoEmailError) {
-          console.error('Error in automatic email processing:', autoEmailError);
-          // Don't fail the order creation if email processing fails
         }
       }
     } catch (emailTableError) {
