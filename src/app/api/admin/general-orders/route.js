@@ -221,21 +221,22 @@ export async function POST(request) {
       .lt('deadline', new Date().toISOString());
 
     if (expiredOrders && expiredOrders.length > 0) {
-      console.log(`Found ${expiredOrders.length} expired orders, closing them automatically...`);
+      console.log(`Found ${expiredOrders.length} expired orders, closing them silently (no summary emails)...`);
       
-      // Close expired orders
+      // Close expired orders silently without triggering summary emails
       const { error: closeError } = await supabase
         .from('general_orders')
         .update({ 
           status: 'closed',
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
+          closure_email_sent: true // Mark as sent to prevent summary emails
         })
         .in('id', expiredOrders.map(order => order.id));
 
       if (closeError) {
         console.error('Error auto-closing expired orders:', closeError);
       } else {
-        console.log(`Successfully auto-closed ${expiredOrders.length} expired orders`);
+        console.log(`Successfully auto-closed ${expiredOrders.length} expired orders (without summary emails)`);
       }
     }
 
@@ -416,49 +417,6 @@ export async function POST(request) {
         console.log('📧 Opening emails will be sent automatically when order opens via cron job');
       }
 
-      // Automatically trigger email processing
-      try {
-        console.log('Triggering automatic email processing...');
-        
-        // Determine the correct base URL for internal API calls
-        let baseUrl;
-        if (process.env.NODE_ENV === 'production') {
-          // In production, try multiple environment variables in order of preference
-          if (process.env.NEXT_PUBLIC_SITE_URL) {
-            baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
-          } else if (process.env.RAILWAY_PUBLIC_DOMAIN) {
-            baseUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
-          } else if (process.env.NEXTAUTH_URL) {
-            baseUrl = process.env.NEXTAUTH_URL;
-          } else {
-            console.log('⚠️ No production URL found, skipping automatic email processing');
-            return NextResponse.json(response);
-          }
-        } else {
-          // In development, use localhost with IPv4
-          baseUrl = 'http://127.0.0.1:3000';
-        }
-        
-        console.log('Email service URL:', `${baseUrl}/api/admin/email-service`);
-        
-        const emailServiceResponse = await fetch(`${baseUrl}/api/admin/email-service`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          signal: AbortSignal.timeout(10000) // 10 second timeout
-        });
-        
-        if (emailServiceResponse.ok) {
-          const emailResult = await emailServiceResponse.json();
-          console.log('Automatic email processing result:', emailResult);
-        } else {
-          console.error('Email service request failed:', emailServiceResponse.status);
-        }
-      } catch (autoEmailError) {
-        console.error('Error in automatic email processing:', autoEmailError);
-        // Don't fail the order creation if email processing fails
-      }
     } catch (emailSystemError) {
       console.error('Email system error:', emailSystemError);
     }

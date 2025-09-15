@@ -854,5 +854,10 @@ async function processEmailQueue() {
   }
 }
 
-// Run the main function
-main().catch(console.error);
+// Export the main function for use in other modules
+export default main;
+
+// Run the main function only if this file is executed directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch(console.error);
+}

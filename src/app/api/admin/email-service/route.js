@@ -61,9 +61,13 @@ async function sendEmailWithProviders(mailOptions) {
 const SENDER_EMAIL = 'noreply@vapes-shop.top';
 
 // GET - Process pending emails
-export async function GET() {
+export async function GET(request) {
   try {
-    console.log('Processing pending emails...');
+    // Get query parameters
+    const { searchParams } = new URL(request.url);
+    const excludeSummary = searchParams.get('exclude_summary') === 'true';
+    
+    console.log('Processing pending emails...', excludeSummary ? '(excluding summary emails)' : '');
 
     // Clean up orphaned email notifications first
     await cleanupOrphanedEmails();
@@ -104,7 +108,28 @@ export async function GET() {
     }
 
     console.log(`Found ${allPendingEmails.length} pending emails to process`);
-    const pendingEmails = allPendingEmails;
+    
+    // Filter out summary emails if exclude_summary parameter is set
+    let pendingEmails = allPendingEmails;
+    if (excludeSummary) {
+      pendingEmails = allPendingEmails.filter(email => {
+        const emailBody = email.body || email.html_body || '';
+        const isGeneralOrderSummary = emailBody.startsWith('GENERAL_ORDER_SUMMARY:');
+        const isSystemSummary = email.recipient_email === 'SYSTEM_GENERAL_ORDER_SUMMARY';
+        return !isGeneralOrderSummary && !isSystemSummary;
+      });
+      
+      if (pendingEmails.length !== allPendingEmails.length) {
+        console.log(`Filtered out ${allPendingEmails.length - pendingEmails.length} summary emails (exclude_summary=true)`);
+      }
+    }
+
+    if (pendingEmails.length === 0) {
+      return NextResponse.json({ 
+        message: excludeSummary ? 'אין אימיילים ממתינים (למעט סיכומי הזמנות)' : 'אין אימיילים ממתינים', 
+        processed: 0 
+      });
+    }
 
     // Rate limiting for Resend free tier: max 2 emails per second
     const RATE_LIMIT_DELAY = 600; // 600ms delay between emails (safer than 1000ms for 2/sec limit)
@@ -567,18 +592,31 @@ async function parseGeneralOrderSummaryData(emailBody, isAdminRecipient = false)
     try {
       console.log('🔐 Admin recipient detected - generating PDF reports for general order summary...');
       
+      // Determine the correct base URL for PDF generation
+      const baseUrl = process.env.NODE_ENV === 'production' 
+        ? (process.env.NEXT_PUBLIC_SITE_URL || `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` || process.env.NEXTAUTH_URL)
+        : 'http://127.0.0.1:3000';
+      
+      if (!baseUrl) {
+        throw new Error('No base URL configured for PDF generation');
+      }
+      
+      console.log('🔍 Using base URL for PDF generation:', baseUrl);
+      
       // Generate admin PDF report
-      const adminPdfResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/generate-pdf`, {
+      const adminPdfResponse = await fetch(`${baseUrl}/api/admin/generate-pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: orderId, reportType: 'admin' })
+        body: JSON.stringify({ orderId: orderId, reportType: 'admin' }),
+        signal: AbortSignal.timeout(30000) // 30 second timeout
       });
       
       // Generate supplier PDF report
-      const supplierPdfResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/generate-pdf`, {
+      const supplierPdfResponse = await fetch(`${baseUrl}/api/admin/generate-pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: orderId, reportType: 'supplier' })
+        body: JSON.stringify({ orderId: orderId, reportType: 'supplier' }),
+        signal: AbortSignal.timeout(30000) // 30 second timeout
       });
       
       if (adminPdfResponse.ok && supplierPdfResponse.ok) {
@@ -1300,16 +1338,29 @@ async function sendGeneralOrderSummary(body) {
   try {
     console.log('Generating PDF reports for general order summary...');
     
-    const adminPdfResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/generate-pdf`, {
+    // Determine the correct base URL for PDF generation
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? (process.env.NEXT_PUBLIC_SITE_URL || `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` || process.env.NEXTAUTH_URL)
+      : 'http://127.0.0.1:3000';
+    
+    if (!baseUrl) {
+      throw new Error('No base URL configured for PDF generation');
+    }
+    
+    console.log('🔍 Using base URL for PDF generation:', baseUrl);
+    
+    const adminPdfResponse = await fetch(`${baseUrl}/api/admin/generate-pdf`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderId, reportType: 'admin' })
+      body: JSON.stringify({ orderId, reportType: 'admin' }),
+      signal: AbortSignal.timeout(30000) // 30 second timeout
     });
 
-    const supplierPdfResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/generate-pdf`, {
+    const supplierPdfResponse = await fetch(`${baseUrl}/api/admin/generate-pdf`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderId, reportType: 'supplier' })
+      body: JSON.stringify({ orderId, reportType: 'supplier' }),
+      signal: AbortSignal.timeout(30000) // 30 second timeout
     });
 
     if (adminPdfResponse.ok) {
