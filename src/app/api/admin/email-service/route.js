@@ -218,6 +218,16 @@ async function processEmail(emailLog) {
   // Get email body from either field (different tables have different field names)
   const emailBody = emailLog.body || emailLog.html_body || '';
 
+  // Handle system notifications (SYSTEM_* recipients)
+  if (emailLog.recipient_email.startsWith('SYSTEM_')) {
+    console.log('🎯 Routing to processSystemNotification');
+    const result = await processSystemNotification(emailLog);
+    if (result.success) {
+      await updateEmailStatus('sent');
+    }
+    return result;
+  }
+
   // Handle order confirmations
   if (emailBody.startsWith('USER_ORDER_CONFIRMATION:')) {
     console.log('🎯 Routing to processOrderConfirmation');
