@@ -68,21 +68,43 @@ export async function GET() {
     // Clean up orphaned email notifications first
     await cleanupOrphanedEmails();
 
-    // Get pending email notifications
-    const { data: pendingEmails, error } = await supabase
+    // Get pending emails from both email_queue (status='pending') and email_logs (status='failed')
+    let allPendingEmails = [];
+    
+    // Check email_queue table for pending emails
+    const { data: queueEmails, error: queueError } = await supabase
+      .from('email_queue')
+      .select('*')
+      .eq('status', 'pending')
+      .lt('attempts', 3) // Only retry up to 3 times
+      .limit(5);
+
+    if (!queueError && queueEmails) {
+      allPendingEmails.push(...queueEmails.map(email => ({ ...email, source: 'email_queue' })));
+    }
+
+    // Check email_logs table for failed emails (used as queue)
+    const { data: logEmails, error: logError } = await supabase
       .from('email_logs')
       .select('*')
       .eq('status', 'failed') // 'failed' status is used as queue (emails waiting to be sent)
-      .limit(10);
+      .limit(5);
 
-    if (error) {
-      console.error('Error fetching pending emails:', error);
+    if (!logError && logEmails) {
+      allPendingEmails.push(...logEmails.map(email => ({ ...email, source: 'email_logs' })));
+    }
+
+    if (queueError && logError) {
+      console.error('Error fetching pending emails from both tables:', { queueError, logError });
       return NextResponse.json({ error: 'שגיאה בטעינת אימיילים' }, { status: 500 });
     }
 
-    if (!pendingEmails || pendingEmails.length === 0) {
+    if (allPendingEmails.length === 0) {
       return NextResponse.json({ message: 'אין אימיילים ממתינים', processed: 0 });
     }
+
+    console.log(`Found ${allPendingEmails.length} pending emails to process`);
+    const pendingEmails = allPendingEmails;
 
     let processed = 0;
     let errors = [];
@@ -95,14 +117,24 @@ export async function GET() {
         console.error(`Error processing email ${emailLog.id}:`, error);
         errors.push({ id: emailLog.id, error: error.message });
         
-        // Mark as failed
+        // Mark as failed in the correct table
+        const tableName = emailLog.source || 'email_logs';
+        const updateData = {
+          error_message: error.message,
+          sent_at: new Date().toISOString()
+        };
+
+        if (tableName === 'email_queue') {
+          updateData.status = 'failed';
+          updateData.attempts = (emailLog.attempts || 0) + 1;
+          updateData.failed_at = new Date().toISOString();
+        } else {
+          updateData.status = 'failed';
+        }
+
         await supabase
-          .from('email_logs')
-          .update({
-            status: 'failed',
-            error_message: error.message,
-            sent_at: new Date().toISOString()
-          })
+          .from(tableName)
+          .update(updateData)
           .eq('id', emailLog.id);
       }
     }
@@ -120,76 +152,116 @@ export async function GET() {
 }
 
 async function processEmail(emailLog) {
-  console.log(`🔍 Processing email: ${emailLog.body} -> ${emailLog.recipient_email}`);
+  console.log(`🔍 Processing email: ${emailLog.body || emailLog.html_body} -> ${emailLog.recipient_email}`);
+  
+  // Helper function to update email status in correct table
+  const updateEmailStatus = async (status, errorMessage = null) => {
+    const tableName = emailLog.source || 'email_logs';
+    const updateData = {
+      status,
+      sent_at: new Date().toISOString()
+    };
+
+    if (errorMessage) {
+      updateData.error_message = errorMessage;
+    }
+
+    if (tableName === 'email_queue') {
+      if (status === 'failed') {
+        updateData.attempts = (emailLog.attempts || 0) + 1;
+        updateData.failed_at = new Date().toISOString();
+      }
+    }
+
+    await supabase
+      .from(tableName)
+      .update(updateData)
+      .eq('id', emailLog.id);
+  };
   
   // Validate email address format for real recipients
   if (!emailLog.recipient_email.startsWith('SYSTEM_')) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(emailLog.recipient_email)) {
       console.log(`Invalid email address: ${emailLog.recipient_email}`);
-      await supabase
-        .from('email_logs')
-        .update({
-          status: 'error',
-          error_message: 'Invalid email address format',
-          sent_at: new Date().toISOString()
-        })
-        .eq('id', emailLog.id);
+      await updateEmailStatus('error', 'Invalid email address format');
       throw new Error(`Invalid email address: ${emailLog.recipient_email}`);
     }
   }
 
+  // Get email body from either field (different tables have different field names)
+  const emailBody = emailLog.body || emailLog.html_body || '';
+
   // Handle order confirmations
-  if (emailLog.body.startsWith('USER_ORDER_CONFIRMATION:')) {
+  if (emailBody.startsWith('USER_ORDER_CONFIRMATION:')) {
     console.log('🎯 Routing to processOrderConfirmation');
-    return await processOrderConfirmation(emailLog);
+    const result = await processOrderConfirmation(emailLog);
+    if (result.success) {
+      await updateEmailStatus('sent');
+    }
+    return result;
   }
   
   // Handle general order opened notifications
-  if (emailLog.body.startsWith('GENERAL_ORDER_OPENED:')) {
-    return await processTemplatedEmail(emailLog, 'GENERAL_ORDER_OPENED');
+  if (emailBody.startsWith('GENERAL_ORDER_OPENED:')) {
+    const result = await processTemplatedEmail(emailLog, 'GENERAL_ORDER_OPENED');
+    if (result.success) {
+      await updateEmailStatus('sent');
+    }
+    return result;
   }
   
   // Handle general order summary notifications
-  if (emailLog.body.startsWith('GENERAL_ORDER_SUMMARY:')) {
-    return await processTemplatedEmail(emailLog, 'GENERAL_ORDER_SUMMARY');
+  if (emailBody.startsWith('GENERAL_ORDER_SUMMARY:')) {
+    const result = await processTemplatedEmail(emailLog, 'GENERAL_ORDER_SUMMARY');
+    if (result.success) {
+      await updateEmailStatus('sent');
+    }
+    return result;
   }
   
   // Handle general order reminders
-  if (emailLog.body.includes('GENERAL_ORDER_REMINDER_1H:')) {
-    return await processTemplatedEmail(emailLog, 'GENERAL_ORDER_REMINDER_1H');
+  if (emailBody.includes('GENERAL_ORDER_REMINDER_1H:')) {
+    const result = await processTemplatedEmail(emailLog, 'GENERAL_ORDER_REMINDER_1H');
+    if (result.success) {
+      await updateEmailStatus('sent');
+    }
+    return result;
   }
   
-  if (emailLog.body.includes('GENERAL_ORDER_REMINDER_10M:')) {
-    return await processTemplatedEmail(emailLog, 'GENERAL_ORDER_REMINDER_10M');
+  if (emailBody.includes('GENERAL_ORDER_REMINDER_10M:')) {
+    const result = await processTemplatedEmail(emailLog, 'GENERAL_ORDER_REMINDER_10M');
+    if (result.success) {
+      await updateEmailStatus('sent');
+    }
+    return result;
   }
   
   // Handle general order closed notifications
-  if (emailLog.body.startsWith('GENERAL_ORDER_CLOSED:')) {
-    return await processTemplatedEmail(emailLog, 'GENERAL_ORDER_CLOSED');
+  if (emailBody.startsWith('GENERAL_ORDER_CLOSED:')) {
+    const result = await processTemplatedEmail(emailLog, 'GENERAL_ORDER_CLOSED');
+    if (result.success) {
+      await updateEmailStatus('sent');
+    }
+    return result;
   }
 
-  // Handle regular email
+  // Handle regular email (for email_queue table with html_body)
   const mailOptions = {
     from: SENDER_EMAIL,
     to: emailLog.recipient_email,
     subject: emailLog.subject,
-    html: emailLog.body
+    html: emailLog.html_body || emailLog.body
   };
 
   const emailResult = await sendEmailWithProviders(mailOptions);
   console.log(`Email sent via ${emailResult.service} to ${emailLog.recipient_email}`);
 
   // Mark as sent
-  await supabase
-    .from('email_logs')
-    .update({
-      status: 'sent',
-      sent_at: new Date().toISOString()
-    })
-    .eq('id', emailLog.id);
+  await updateEmailStatus('sent');
 
   console.log(`Email sent to ${emailLog.recipient_email}`);
+  return { success: true, service: emailResult.service };
 }
 
 // Generic function to process templated emails

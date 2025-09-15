@@ -89,8 +89,24 @@ export async function GET(request) {
                         
                         // Trigger automatic email processing
                         try {
-                            const emailProcessResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/email-service`, {
-                                method: 'GET'
+                            // Determine the correct base URL for internal API calls
+                            let baseUrl;
+                            if (process.env.NODE_ENV === 'production') {
+                                if (process.env.NEXT_PUBLIC_SITE_URL) {
+                                    baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
+                                } else if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+                                    baseUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+                                } else {
+                                    console.log('⚠️ No production URL found, skipping email processing');
+                                    continue;
+                                }
+                            } else {
+                                baseUrl = 'http://127.0.0.1:3000';
+                            }
+                            
+                            const emailProcessResponse = await fetch(`${baseUrl}/api/admin/email-service`, {
+                                method: 'GET',
+                                signal: AbortSignal.timeout(10000)
                             });
                             
                             if (emailProcessResponse.ok) {
@@ -265,8 +281,22 @@ export async function POST(request) {
         }
 
         if (action === 'join' && items && Array.isArray(items)) {
+            // Determine the correct base URL for internal API calls
+            let baseUrl;
+            if (process.env.NODE_ENV === 'production') {
+                if (process.env.NEXT_PUBLIC_SITE_URL) {
+                    baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
+                } else if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+                    baseUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+                } else {
+                    return NextResponse.json({ error: 'שגיאה בתצורת השרת' }, { status: 500 });
+                }
+            } else {
+                baseUrl = 'http://127.0.0.1:3000';
+            }
+            
             // Forward to participation endpoint
-            const participateResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/general-orders/participate`, {
+            const participateResponse = await fetch(`${baseUrl}/api/general-orders/participate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -274,7 +304,8 @@ export async function POST(request) {
                 body: JSON.stringify({
                     general_order_id,
                     items
-                })
+                }),
+                signal: AbortSignal.timeout(15000)
             });
 
             const result = await participateResponse.json();

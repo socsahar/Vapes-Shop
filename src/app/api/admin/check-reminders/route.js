@@ -48,21 +48,87 @@ export async function GET() {
           if (!updateError) {
             results.opened_orders++;
             
-            // Send opening notification
+            // Queue opening notifications to all users
             try {
-              await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/email-service`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  type: 'general_order_opened',
-                  orderId: order.id,
-                  orderTitle: order.title,
-                  deadline: order.deadline
-                })
-              });
+              console.log(`Queuing opening notifications for order: ${order.title}`);
+              
+              // Get all users for email notifications
+              const { data: users, error: usersError } = await supabase
+                .from('users')
+                .select('id, email, full_name')
+                .eq('email_notifications', true);
+
+              if (usersError) {
+                throw new Error(`Error fetching users: ${usersError.message}`);
+              }
+
+              if (users && users.length > 0) {
+                // Try email_queue table first
+                const emailsToQueue = users.map(user => ({
+                  recipient_email: user.email,
+                  recipient_name: user.full_name,
+                  subject: `הזמנה קבוצתית נפתחה - ${order.title}`,
+                  html_body: `
+                    <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                      <h2>הזמנה קבוצתית נפתחה! 🎉</h2>
+                      <p>שלום ${user.full_name},</p>
+                      <p>הזמנה קבוצתית חדשה נפתחה: <strong>${order.title}</strong></p>
+                      <p>תוכלו להצטרף להזמנה באתר</p>
+                      <p>תאריך סגירה: ${new Date(order.deadline).toLocaleDateString('he-IL')}</p>
+                    </div>
+                  `,
+                  email_type: 'general_order_open',
+                  user_id: user.id,
+                  general_order_id: order.id,
+                  priority: 3
+                }));
+
+                const { error: queueError } = await supabase
+                  .from('email_queue')
+                  .insert(emailsToQueue);
+
+                if (queueError) {
+                  console.log('Email queue table not available, using email_logs fallback');
+                  
+                  // Fallback to email_logs table
+                  const fallbackEmails = emailsToQueue.map(email => ({
+                    recipient_email: email.recipient_email,
+                    subject: email.subject,
+                    body: `GENERAL_ORDER_OPENED:${email.general_order_id}:${email.user_id}`,
+                    status: 'failed' // Queue status for email_logs
+                  }));
+
+                  const { error: fallbackError } = await supabase
+                    .from('email_logs')
+                    .insert(fallbackEmails);
+
+                  if (fallbackError) {
+                    throw new Error(`Error queuing emails: ${fallbackError.message}`);
+                  } else {
+                    console.log(`📧 Queued ${fallbackEmails.length} opening emails via email_logs`);
+                  }
+                } else {
+                  console.log(`📧 Queued ${emailsToQueue.length} opening emails via email_queue`);
+                }
+
+                // Update shop status to open
+                const { error: shopError } = await supabase
+                  .rpc('toggle_shop_status', { 
+                    new_status: true, 
+                    new_message: `ההזמנה הקבוצתית "${order.title}" נפתחה!`,
+                    current_order_id: order.id 
+                  });
+
+                if (shopError) {
+                  console.error('Error updating shop status:', shopError);
+                } else {
+                  console.log('✅ Shop status updated to open');
+                }
+              }
+              
             } catch (emailError) {
-              console.error('Failed to send opening notification:', emailError);
-              results.errors.push(`Opening email for order ${order.id}: ${emailError.message}`);
+              console.error('Failed to queue opening notifications:', emailError);
+              results.errors.push(`Database function: ${emailError.message}`);
             }
           }
           continue;

@@ -156,11 +156,30 @@ export async function PUT(request, context) {
         // Trigger automatic email processing
         try {
           console.log('Triggering automatic email processing...');
-          const emailProcessResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/email-service`, {
+          
+          // Determine the correct base URL for internal API calls
+          let baseUrl;
+          if (process.env.NODE_ENV === 'production') {
+            if (process.env.NEXT_PUBLIC_SITE_URL) {
+              baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
+            } else if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+              baseUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+            } else if (process.env.NEXTAUTH_URL) {
+              baseUrl = process.env.NEXTAUTH_URL;
+            } else {
+              console.log('⚠️ No production URL found, skipping automatic email processing');
+              return NextResponse.json({ success: true, message: 'הזמנה קבוצתית נסגרה בהצלחה' });
+            }
+          } else {
+            baseUrl = 'http://127.0.0.1:3000';
+          }
+          
+          const emailProcessResponse = await fetch(`${baseUrl}/api/admin/email-service`, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json'
-            }
+            },
+            signal: AbortSignal.timeout(10000)
           });
           const emailResult = await emailProcessResponse.json();
           console.log('Automatic email processing result:', emailResult);
@@ -243,6 +262,30 @@ export async function DELETE(request, context) {
       }
 
       console.log(`📦 Deleted ${orderIds.length} orders`);
+    }
+
+    // Delete related email entries from both tables before deleting the general order
+    const { error: emailQueueError } = await supabase
+      .from('email_queue')
+      .delete()
+      .eq('general_order_id', id);
+
+    if (emailQueueError) {
+      console.log('Warning: Could not delete email_queue entries:', emailQueueError);
+    } else {
+      console.log(`📧 Deleted email_queue entries for general order ${id}`);
+    }
+
+    // Also clean email_logs table
+    const { error: emailLogsError } = await supabase
+      .from('email_logs')
+      .delete()
+      .eq('general_order_id', id);
+
+    if (emailLogsError) {
+      console.log('Warning: Could not delete email_logs entries:', emailLogsError);
+    } else {
+      console.log(`📧 Deleted email_logs entries for general order ${id}`);
     }
 
     // Finally, delete the general order
