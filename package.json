@@ -16,6 +16,7 @@
     "production-setup": "node production-setup.js",
     "inspect-db": "node inspect-database.js",
     "cron": "node cron-general-orders.js",
+    "cron:service": "node cron-service.js",
     "test:scheduled-orders": "node test-scheduled-orders.js"
   },
   "dependencies": {
@@ -37,6 +38,10 @@
     "puppeteer": "^24.19.0",
     "react": "19.1.0",
     "react-dom": "19.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

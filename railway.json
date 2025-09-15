@@ -4,13 +4,6 @@
     "buildCommand": "npm run build"
   },
   "deploy": {
-    "startCommand": "npm start"
-  },
-  "environments": {
-    "production": {
-      "variables": {
-        "NODE_ENV": "production"
-      }
-    }
+    "startCommand": "NODE_ENV=production npm start"
   }
 }

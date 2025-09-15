@@ -6,6 +6,20 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { showToast } from '../../components/Toast';
 
+// Helper function to format datetime for local input
+const formatDateTimeLocalInput = (date) => {
+    if (!date) return '';
+    
+    // Convert UTC date from database to local time for datetime-local input
+    const utcDate = new Date(date);
+    
+    // Adjust for local timezone (accounts for daylight saving time automatically)
+    const localDate = new Date(utcDate.getTime() - (utcDate.getTimezoneOffset() * 60000));
+    
+    // Return in datetime-local format (YYYY-MM-DDTHH:MM)
+    return localDate.toISOString().substring(0, 16);
+};
+
 export default function AdminPage() {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -92,6 +106,7 @@ export default function AdminPage() {
     const [systemStatus, setSystemStatus] = useState(null);
     const [systemStatusLoading, setSystemStatusLoading] = useState(false);
     const [statusRefreshInterval, setStatusRefreshInterval] = useState(null);
+    const [manualCronLoading, setManualCronLoading] = useState(false);
     const router = useRouter();
 
     useEffect(() => {
@@ -761,8 +776,8 @@ export default function AdminPage() {
         setGeneralOrderForm({
             title: order.title,
             description: order.description || '',
-            deadline: new Date(order.deadline).toISOString().slice(0, 16),
-            opening_time: order.opening_time ? new Date(order.opening_time).toISOString().slice(0, 16) : '',
+            deadline: formatDateTimeLocalInput(new Date(order.deadline)),
+            opening_time: order.opening_time ? formatDateTimeLocalInput(new Date(order.opening_time)) : '',
             schedule_opening: !!order.opening_time
         });
         setShowGeneralOrderModal(true);
@@ -808,10 +823,15 @@ export default function AdminPage() {
             const method = editingGeneralOrder ? 'PUT' : 'POST';
             
             const payload = {
-                ...generalOrderForm,
+                title: generalOrderForm.title,
+                description: generalOrderForm.description || null,
                 created_by: user.id,
-                // Set opening_time to null if not scheduling
-                opening_time: generalOrderForm.schedule_opening ? generalOrderForm.opening_time : null
+                // Convert local datetime to UTC for storage
+                deadline: new Date(generalOrderForm.deadline).toISOString(),
+                // Set opening_time to UTC if scheduling, null otherwise
+                opening_time: generalOrderForm.schedule_opening && generalOrderForm.opening_time 
+                    ? new Date(generalOrderForm.opening_time).toISOString() 
+                    : null
             };
 
             const response = await fetch(url, {
@@ -1118,6 +1138,35 @@ export default function AdminPage() {
             if (showLoader) {
                 setSystemStatusLoading(false);
             }
+        }
+    };
+
+    const triggerManualCron = async () => {
+        setManualCronLoading(true);
+        
+        try {
+            const response = await fetch('/api/admin/manual-cron', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                }
+            });
+
+            const data = await response.json();
+            
+            if (data.success) {
+                setToast({ message: 'Cron job executed successfully!', type: 'success' });
+                // Refresh system status to show updated results
+                setTimeout(() => fetchSystemStatus(true), 1000);
+            } else {
+                setToast({ message: `Cron job failed: ${data.error}`, type: 'error' });
+            }
+        } catch (error) {
+            console.error('Error triggering manual cron:', error);
+            setToast({ message: 'Failed to trigger cron job', type: 'error' });
+        } finally {
+            setManualCronLoading(false);
         }
     };
 
@@ -2141,6 +2190,19 @@ export default function AdminPage() {
                                             <span className="ml-2">🔄</span>
                                         )}
                                         רענן סטטוס
+                                    </button>
+                                    <button 
+                                        onClick={triggerManualCron}
+                                        disabled={manualCronLoading}
+                                        className="admin-btn-primary"
+                                        style={{ marginRight: '10px' }}
+                                    >
+                                        {manualCronLoading ? (
+                                            <span className="spinner-sm"></span>
+                                        ) : (
+                                            <span className="ml-2">🤖</span>
+                                        )}
+                                        הפעל Cron ידנית
                                     </button>
                                 </div>
                             </div>

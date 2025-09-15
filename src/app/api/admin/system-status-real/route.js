@@ -45,7 +45,7 @@ async function getCronJobStatus() {
         const { data: cronJobs, error: cronError } = await supabase
             .from('cron_jobs')
             .select('*')
-            .order('last_run_at', { ascending: false });
+            .order('last_run', { ascending: false });
 
         if (cronError) {
             console.error('Error fetching cron jobs:', cronError);
@@ -175,20 +175,22 @@ function buildCronStatus(cronJob, activities, displayName, extraData = null) {
         };
     }
 
-    const status = cronJob.is_active ? 
-        (cronJob.last_run_status === 'success' ? 'active' : 
-         cronJob.last_run_status === 'failed' ? 'error' : 'unknown') : 'inactive';
+    // Determine status based on actual database fields
+    const status = cronJob.status === 'success' ? 'active' : 
+                  cronJob.status === 'failed' ? 'error' : 
+                  cronJob.status === 'running' ? 'active' :
+                  cronJob.status === 'idle' ? 'inactive' : 'unknown';
 
     return {
         status,
         displayName,
-        lastRun: cronJob.last_run_at,
-        lastRunStatus: cronJob.last_run_status,
-        totalRuns: cronJob.total_runs,
-        successfulRuns: cronJob.successful_runs,
-        failedRuns: cronJob.failed_runs,
-        lastRunDuration: cronJob.last_run_duration,
-        errorMessage: cronJob.error_message,
+        lastRun: cronJob.last_run,
+        lastRunStatus: cronJob.status,
+        totalRuns: cronJob.run_count || 0,
+        successfulRuns: cronJob.success_count || 0,
+        failedRuns: cronJob.failure_count || 0,
+        lastRunDuration: cronJob.duration_ms,
+        errorMessage: cronJob.last_error,
         totalProcessed: activities.length,
         recentActivities: activities.slice(0, 5),
         extraData

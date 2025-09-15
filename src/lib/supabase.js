@@ -13,10 +13,12 @@ const checkEnvVars = () => {
 
 // Configure fetch with SSL bypass for server environments
 const createFetchWithSSLBypass = () => {
-  // Only bypass SSL in server environment (Node.js)
+  // Only bypass SSL in server environment (Node.js) and only during development
   if (typeof window === 'undefined' && typeof process !== 'undefined') {
-    // Set environment variable to bypass SSL verification
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    // Only set in development, never in production
+    if (process.env.NODE_ENV === 'development' && !process.env.RAILWAY_ENVIRONMENT) {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    }
     
     return (url, options = {}) => {
       return fetch(url, {
