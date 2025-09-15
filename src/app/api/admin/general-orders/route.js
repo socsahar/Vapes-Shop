@@ -335,25 +335,15 @@ export async function POST(request) {
         console.error('Shop RPC function not available:', shopRpcError);
       }
     } else if (newOrder.status === 'scheduled') {
-      // Keep shop closed for scheduled orders with proper message
+      // Keep shop closed for scheduled orders without revealing info
       try {
         console.log('Setting shop status for scheduled general order...');
-        const openingTime = new Date(newOrder.opening_time);
-        const openingTimeStr = openingTime.toLocaleString('he-IL', {
-          timeZone: 'Asia/Jerusalem',
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
         
         const { error: shopError } = await supabase
           .rpc('toggle_shop_status', {
             open_status: false,
             general_order_id: null,
-            status_message: `החנות סגורה כרגע. הזמנה קבוצתית "${title}" תיפתח ב-${openingTimeStr}`
+            status_message: 'החנות סגורה כרגע'
           });
 
         if (shopError) {
