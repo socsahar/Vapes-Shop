@@ -471,9 +471,7 @@ async function parseGeneralOrderData(emailBody, templateType) {
     .from('general_orders')
     .select(`
       id, title, description, status, created_at, closes_at, created_by,
-      creator:created_by(full_name),
-      general_order_participants(id, total_amount, users!general_order_participants_user_id_fkey(full_name)),
-      general_order_items(product_id)
+      creator:created_by(full_name)
     `)
     .eq('id', orderId)
     .single();
@@ -482,11 +480,22 @@ async function parseGeneralOrderData(emailBody, templateType) {
     throw new Error('General order not found');
   }
   
-  const participantCount = orderData.general_order_participants?.length || 0;
-  const totalAmount = orderData.general_order_participants?.reduce((sum, p) => sum + (p.total_amount || 0), 0) || 0;
+  // Get participants from orders table
+  const { data: participants, error: participantsError } = await supabase
+    .from('orders')
+    .select(`
+      id, user_id, total_amount,
+      users!orders_user_id_fkey(full_name),
+      order_items:order_items(product_id)
+    `)
+    .eq('general_order_id', orderId);
+  
+  const participantCount = participants?.length || 0;
+  const totalAmount = participants?.reduce((sum, p) => sum + (p.total_amount || 0), 0) || 0;
   
   // Get unique products count
-  const uniqueProductIds = [...new Set(orderData.general_order_items?.map(item => item.product_id) || [])];
+  const allOrderItems = participants?.flatMap(p => p.order_items || []) || [];
+  const uniqueProductIds = [...new Set(allOrderItems.map(item => item.product_id))];
   const uniqueProducts = uniqueProductIds.length;
   
   return {
@@ -517,13 +526,23 @@ async function parseGeneralOrderSummaryData(emailBody, isAdminRecipient = false)
   
   const orderData = await parseGeneralOrderData(`GENERAL_ORDER_SUMMARY:${orderId}`, 'GENERAL_ORDER_SUMMARY');
   
-  // Get participants list for summary
+  // Get participants list for summary (using orders table)
   const { data: participants, error: participantsError } = await supabase
-    .from('general_order_participants')
+    .from('orders')
     .select(`
+      id,
+      user_id,
       total_amount,
-      users!general_order_participants_user_id_fkey(full_name, email),
-      general_order_items(quantity, unit_price, products!general_order_items_product_id_fkey(name))
+      created_at,
+      users!orders_user_id_fkey(full_name, email),
+      order_items:order_items(
+        id,
+        product_id,
+        quantity,
+        unit_price,
+        total_price,
+        products:products!order_items_product_id_fkey(name, price)
+      )
     `)
     .eq('general_order_id', orderId);
     
@@ -531,7 +550,7 @@ async function parseGeneralOrderSummaryData(emailBody, isAdminRecipient = false)
     const participantsList = participants.map(p => `
       <div style="margin: 10px 0; padding: 10px; border: 1px solid #ddd;">
         <strong>${p.users?.full_name || 'משתמש'}</strong> - ₪${p.total_amount}
-        ${p.general_order_items?.map(item => `
+        ${p.order_items?.map(item => `
           <div style="margin-left: 20px;">• ${item.products?.name} x${item.quantity} (₪${item.unit_price})</div>
         `).join('') || ''}
       </div>
@@ -736,160 +755,53 @@ async function processOrderConfirmation(emailLog) {
   const participantId = parts[1];
   const generalOrderId = parts[2];
   
-  // First try to get participant details - use simpler query without complex joins
-  let { data: participant, error: participantError } = await supabase
-    .from('general_order_participants')
-    .select('*')
+  // First try to get order details (using orders table)
+  let { data: order, error: orderError } = await supabase
+    .from('orders')
+    .select(`
+      id, user_id, total_amount, status, created_at, general_order_id,
+      users!orders_user_id_fkey(full_name, email),
+      general_orders!orders_general_order_id_fkey(title, description, deadline, status)
+    `)
     .eq('id', participantId)
     .single();
 
-  if (!participantError && participant) {
-    // Get user data separately
-    const { data: userData } = await supabase
-      .from('users')
-      .select('full_name, email')
-      .eq('id', participant.user_id)
-      .single();
-
-    // Get general order data separately  
-    const { data: generalOrderData } = await supabase
-      .from('general_orders')
-      .select('id, title, description, deadline')
-      .eq('id', participant.general_order_id)
-      .single();
-
-    // Get order items with products separately
-    const { data: orderItemsData } = await supabase
-      .from('general_order_items')
-      .select('id, product_id, quantity, unit_price, total_price')
-      .eq('general_order_participant_id', participant.id);
-
-    // Get product details for each item
-    const itemsWithProducts = [];
-    for (const item of orderItemsData || []) {
-      const { data: productData } = await supabase
-        .from('products')
-        .select('name, description, price')
-        .eq('id', item.product_id)
-        .single();
-      
-      itemsWithProducts.push({
-        ...item,
-        product: productData
-      });
-    }
-
-    // Convert to expected format
-    participant = {
-      id: participant.id,
-      user_id: participant.user_id,
-      total_amount: participant.total_amount,
-      created_at: participant.created_at,
-      user: userData,
-      general_order: generalOrderData,
-      order_items: itemsWithProducts
-    };
-  } else {
-    console.log('Participant not found in general_order_participants, trying old format with orders table...');
-    participantError = true; // Force fallback
-  }
-
-  // If participant not found, try old format (order ID)
-  if (participantError || !participant) {
-    console.log('Participant not found, trying old format with order ID...');
-    
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .select(`
-        id,
-        user_id,
-        total_amount,
-        created_at,
-        general_order_id
-      `)
-      .eq('id', participantId)
-      .single();
-
-    if (orderError || !order) {
-      console.error('Order not found in old format:', { participantError, orderError });
-      
-      // Mark this email as failed and skip it instead of throwing error
-      await supabase
-        .from('email_queue')
-        .update({ 
-          status: 'failed',
-          error_message: 'Order participant not found - likely old/invalid queue entry',
-          processed_at: new Date().toISOString()
-        })
-        .eq('id', emailLog.id);
-      
-      console.log(`Marked email ${emailLog.id} as failed due to missing participant/order`);
-      return;
-    }
-
-    // Get user data separately
-    const { data: userData } = await supabase
-      .from('users')
-      .select('full_name, email')
-      .eq('id', order.user_id)
-      .single();
-
-    // Get general order data separately  
-    const { data: generalOrderData } = await supabase
-      .from('general_orders')
-      .select('id, title, description, deadline')
-      .eq('id', order.general_order_id)
-      .single();
-
-    // Get order items with products separately
-    const { data: orderItemsData } = await supabase
+  if (!orderError && order) {
+    // Get order items with products
+    const { data: orderItemsData, error: itemsError } = await supabase
       .from('order_items')
       .select(`
-        id,
-        product_id,
-        quantity,
-        unit_price,
-        total_price
+        id, product_id, quantity, unit_price, total_price,
+        products:products!order_items_product_id_fkey(name, description, price)
       `)
       .eq('order_id', order.id);
 
-    // Get product details for each item
-    const itemsWithProducts = [];
-    for (const item of orderItemsData || []) {
-      const { data: productData } = await supabase
-        .from('products')
-        .select('name, description, price')
-        .eq('id', item.product_id)
-        .single();
-      
-      itemsWithProducts.push({
-        ...item,
-        products: productData
-      });
-    }
-
-    // Convert old format to new format for consistency
-    participant = {
+    // Convert to expected format
+    const participant = {
       id: order.id,
       user_id: order.user_id,
+      general_order_id: order.general_order_id,
       total_amount: order.total_amount,
-      created_at: order.created_at,
-      user: userData,
-      general_order: generalOrderData,
-      order_items: itemsWithProducts.map(item => ({
-        ...item,
-        product: item.products
-      }))
+      users: order.users,
+      general_orders: order.general_orders,
+      order_items: orderItemsData || []
     };
+  } else {
+    console.log('Order not found with ID:', participantId);
+    throw new Error('Order/Participant not found');
   }
 
-  // Get email template
-  const { data: template, error: templateError } = await supabase
-    .from('email_templates')
-    .select('*')
-    .eq('template_type', 'USER_ORDER_CONFIRMATION')
-    .single();
+  // Process the order confirmation email using emailProcessor
+  try {
+    const result = await processUserOrderConfirmation(participant.id, participant.general_order_id);
+    return { success: true, result };
+  } catch (emailError) {
+    console.error('Error processing order confirmation:', emailError);
+    throw emailError;
+  }
+}
 
+async function sendOrderOpenedNotifications(body) {
   if (templateError || !template) {
     throw new Error('Order confirmation email template not found');
   }
@@ -1088,7 +1000,7 @@ async function sendReminderNotifications(body, reminderType) {
     .eq('is_active', true)
     .not('id', 'in', `(
       SELECT DISTINCT user_id 
-      FROM general_order_participants 
+      FROM orders 
       WHERE general_order_id = '${orderId}'
     )`);
 
@@ -1381,15 +1293,22 @@ async function sendGeneralOrderSummary(body) {
     throw new Error('General order not found');
   }
 
-  // Get participants and their orders
+  // Get participants and their orders (using orders table)
   const { data: participants, error: participantsError } = await supabase
-    .from('general_order_participants')
+    .from('orders')
     .select(`
-      *,
-      user:user_id(full_name, email),
-      order_items:general_order_items(
+      id,
+      user_id,
+      total_amount,
+      created_at,
+      user:users!orders_user_id_fkey(full_name, email),
+      order_items:order_items(
+        id,
+        product_id,
         quantity,
-        product:product_id(name, price)
+        unit_price,
+        total_price,
+        products:products!order_items_product_id_fkey(name, price, description)
       )
     `)
     .eq('general_order_id', orderId);

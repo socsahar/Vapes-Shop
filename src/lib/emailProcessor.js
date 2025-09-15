@@ -197,55 +197,19 @@ async function processOrderConfirmation(emailLog) {
             throw new Error('Email template not found for USER_ORDER_CONFIRMATION');
         }
         
-        // First try to get participant data (new format)
-        const { data: participant, error: participantError } = await supabase
-            .from('general_order_participants')
+        // Get order data directly (current system uses orders table)
+        const { data: order, error: orderError } = await supabase
+            .from('orders')
             .select(`
-                id, user_id, total_amount, created_at,
-                users!general_order_participants_user_id_fkey(full_name, email),
-                general_orders!general_order_participants_general_order_id_fkey(title, description, deadline, status)
+                id, total_amount, status, created_at, general_order_id,
+                users!orders_user_id_fkey(full_name, email),
+                general_orders!orders_general_order_id_fkey(title, description, deadline, status)
             `)
             .eq('id', participantOrOrderId)
             .single();
             
-        if (!participantError && participant) {
-            // New format with participant - get order items
-            const { data: items, error: itemsError } = await supabase
-                .from('general_order_items')
-                .select(`
-                    quantity, unit_price,
-                    products!general_order_items_product_id_fkey(name)
-                `)
-                .eq('participant_id', participant.id);
-                
-            orderItems = items || [];
-            
-            orderData = {
-                orderNumber: participant.id,
-                customerName: participant.users?.full_name || 'לקוח יקר',
-                totalAmount: participant.total_amount,
-                status: 'pending',
-                generalOrderTitle: participant.general_orders?.title || 'הזמנה קבוצתית',
-                orderTitle: participant.general_orders?.title || 'הזמנה קבוצתית',
-                orderDescription: participant.general_orders?.description || participant.general_orders?.title || 'הזמנה קבוצתית',
-                deadline: participant.general_orders?.deadline
-            };
-        } else {
-            // Fall back to old format with order ID
-            const { data: order, error: orderError } = await supabase
-                .from('orders')
-                .select(`
-                    id, total_amount, status, created_at,
-                    users!orders_user_id_fkey(full_name, email)
-                `)
-                .eq('id', participantOrOrderId)
-                .single();
-                
-            if (orderError || !order) {
-                throw new Error('Order/Participant not found');
-            }
-            
-            // Get order items for regular orders
+        if (!orderError && order) {
+            // Get order items
             const { data: items, error: itemsError } = await supabase
                 .from('order_items')
                 .select(`
@@ -256,23 +220,18 @@ async function processOrderConfirmation(emailLog) {
                 
             orderItems = items || [];
             
-            // Get the general order information for the deadline
-            const { data: generalOrder, error: generalOrderError } = await supabase
-                .from('general_orders')
-                .select('title, description, deadline')
-                .eq('id', generalOrderId)
-                .single();
-            
             orderData = {
                 orderNumber: order.id,
                 customerName: order.users?.full_name || 'לקוח יקר',
                 totalAmount: order.total_amount,
-                status: order.status,
-                generalOrderTitle: generalOrder?.title || 'הזמנה קבוצתית',
-                orderTitle: generalOrder?.title || 'הזמנה קבוצתית',
-                orderDescription: generalOrder?.description || generalOrder?.title || 'הזמנה קבוצתית',
-                deadline: generalOrder?.deadline
+                status: order.status || 'pending',
+                generalOrderTitle: order.general_orders?.title || 'הזמנה קבוצתית',
+                orderTitle: order.general_orders?.title || 'הזמנה קבוצתית',
+                orderDescription: order.general_orders?.description || order.general_orders?.title || 'הזמנה קבוצתית',
+                deadline: order.general_orders?.deadline
             };
+        } else {
+            throw new Error('Order not found');
         }
 
         // Build order items HTML for template

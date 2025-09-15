@@ -221,22 +221,9 @@ export async function POST(request) {
 
         // Queue order confirmation email
         try {
-            // First, check if there's a corresponding participant entry
-            const { data: participant, error: participantError } = await supabaseAdmin
-                .from('general_order_participants')
-                .select('id')
-                .eq('user_id', user.id)
-                .eq('general_order_id', general_order_id)
-                .single();
-
-            let emailBody;
-            if (participant && !participantError) {
-                // Use new format with participant ID
-                emailBody = `USER_ORDER_CONFIRMATION:${participant.id}:${general_order_id}`;
-            } else {
-                // Use old format as fallback
-                emailBody = `USER_ORDER_CONFIRMATION:${orderId}:${general_order_id}`;
-            }
+            // Use the order ID instead of participant ID since we're using orders table
+            // Use the order ID directly since we're using orders table
+            emailBody = `USER_ORDER_CONFIRMATION:${orderId}:${general_order_id}`;
 
             const { error: emailError } = await supabaseAdmin
                 .from('email_logs')
