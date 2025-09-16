@@ -195,15 +195,36 @@ async function autoOpenFutureOrders() {
       }
 
       // Open the shop with this general order
-      const { error: shopError } = await supabase
-        .rpc('toggle_shop_status', {
-          open_status: true,
-          general_order_id: order.id,
-          status_message: `הזמנה קבוצתית פעילה: ${order.title}`
-        });
+      try {
+        // Fetch latest shop_status record to get the correct UUID
+        const { data: shopStatus, error: fetchError } = await supabase
+          .from('shop_status')
+          .select('id')
+          .order('updated_at', { ascending: false })
+          .limit(1);
 
-      if (shopError) {
-        console.error('❌ Warning: Error opening shop for order (order still opened):', shopError);
+        if (fetchError || !shopStatus || shopStatus.length === 0) {
+          console.error('❌ Warning: Error fetching shop status:', fetchError);
+        } else {
+          const shopStatusId = shopStatus[0].id;
+          const { error: shopError } = await supabase
+            .from('shop_status')
+            .update({
+              is_open: true,
+              current_general_order_id: order.id,
+              message: `הזמנה קבוצתית פעילה: ${order.title}`,
+              updated_at: now.toISOString()
+            })
+            .eq('id', shopStatusId);
+
+          if (shopError) {
+            console.error('❌ Warning: Error opening shop for order (order still opened):', shopError);
+          } else {
+            console.log('✅ Shop opened successfully for scheduled order');
+          }
+        }
+      } catch (shopUpdateError) {
+        console.error('❌ Warning: Shop status update error (order still opened):', shopUpdateError);
       }
 
       // Send notification emails to all users
@@ -464,7 +485,8 @@ async function sendOrderOpenNotifications(order) {
       email_type: 'general_order_open',
       user_id: user.id,
       general_order_id: order.id,
-      priority: 3
+      priority: 3,
+      status: 'pending' // Set correct status for email service to find
     }));
 
     const { error: queueError } = await supabase

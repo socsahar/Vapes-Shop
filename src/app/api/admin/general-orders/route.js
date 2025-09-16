@@ -320,20 +320,32 @@ export async function POST(request) {
       // Open the shop immediately for active orders
       try {
         console.log('Opening shop for immediate general order...');
-        const { error: shopError } = await supabase
+        // Fetch latest shop_status record
+        const { data: shopStatus, error: fetchError } = await supabase
           .from('shop_status')
-          .update({
-            is_open: true,
-            current_general_order_id: newOrder.id,
-            message: `החנות פתוחה להזמנות! הזמנה קבוצתית: ${title}`,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', 1);
+          .select('id')
+          .order('updated_at', { ascending: false })
+          .limit(1);
 
-        if (shopError) {
-          console.error('Error opening shop:', shopError);
+        if (fetchError || !shopStatus || shopStatus.length === 0) {
+          console.error('Error fetching shop status:', fetchError);
         } else {
-          console.log('✅ Shop opened successfully for immediate general order');
+          const shopStatusId = shopStatus[0].id;
+          const { error: shopError } = await supabase
+            .from('shop_status')
+            .update({
+              is_open: true,
+              current_general_order_id: newOrder.id,
+              message: `החנות פתוחה להזמנות! הזמנה קבוצתית: ${title}`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', shopStatusId);
+
+          if (shopError) {
+            console.error('Error opening shop:', shopError);
+          } else {
+            console.log('✅ Shop opened successfully for immediate general order');
+          }
         }
       } catch (shopUpdateError) {
         console.error('Shop status update error:', shopUpdateError);
@@ -342,21 +354,32 @@ export async function POST(request) {
       // Keep shop closed for scheduled orders without revealing info
       try {
         console.log('Setting shop status for scheduled general order...');
-        
-        const { error: shopError } = await supabase
+        // Fetch latest shop_status record
+        const { data: shopStatus, error: fetchError } = await supabase
           .from('shop_status')
-          .update({
-            is_open: false,
-            current_general_order_id: null,
-            message: 'החנות סגורה כרגע',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', 1);
+          .select('id')
+          .order('updated_at', { ascending: false })
+          .limit(1);
 
-        if (shopError) {
-          console.error('Error setting shop status for scheduled order:', shopError);
+        if (fetchError || !shopStatus || shopStatus.length === 0) {
+          console.error('Error fetching shop status:', fetchError);
         } else {
-          console.log('✅ Shop status updated for scheduled general order');
+          const shopStatusId = shopStatus[0].id;
+          const { error: shopError } = await supabase
+            .from('shop_status')
+            .update({
+              is_open: false,
+              current_general_order_id: null,
+              message: 'החנות סגורה כרגע',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', shopStatusId);
+
+          if (shopError) {
+            console.error('Error setting shop status for scheduled order:', shopError);
+          } else {
+            console.log('✅ Shop status updated for scheduled general order');
+          }
         }
       } catch (shopRpcError) {
         console.error('Shop RPC function not available:', shopRpcError);

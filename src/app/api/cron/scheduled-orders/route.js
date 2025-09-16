@@ -318,6 +318,19 @@ async function processEmailQueue() {
 // Helper functions
 async function updateShopStatus(isOpen, orderId, message) {
   try {
+    // Fetch latest shop_status record to get the correct UUID
+    const { data: shopStatus, error: fetchError } = await supabase
+      .from('shop_status')
+      .select('id')
+      .order('updated_at', { ascending: false })
+      .limit(1);
+
+    if (fetchError || !shopStatus || shopStatus.length === 0) {
+      console.error('⚠️ Shop status fetch failed:', fetchError);
+      return;
+    }
+
+    const shopStatusId = shopStatus[0].id;
     const { error } = await supabase
       .from('shop_status')
       .update({
@@ -326,7 +339,7 @@ async function updateShopStatus(isOpen, orderId, message) {
         current_general_order_id: orderId,
         updated_at: new Date().toISOString()
       })
-      .eq('id', 1);
+      .eq('id', shopStatusId);
       
     if (error) {
       console.error('⚠️ Shop status update failed:', error.message);
