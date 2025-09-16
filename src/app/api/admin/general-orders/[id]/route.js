@@ -104,11 +104,14 @@ export async function PUT(request, context) {
     // If status changed to closed, close the shop
     if (status === 'closed') {
       const { error: shopError } = await supabase
-        .rpc('toggle_shop_status', {
-          open_status: false,
-          general_order_id: null,
-          status_message: 'החנות סגורה כרגע. נפתח בהזמנה קבוצתית הבאה.'
-        });
+        .from('shop_status')
+        .update({
+          is_open: false,
+          current_general_order_id: null,
+          message: 'החנות סגורה כרגע. נפתח בהזמנה קבוצתית הבאה.',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', 1);
 
       if (shopError) {
         console.error('Error closing shop:', shopError);
@@ -289,16 +292,25 @@ export async function DELETE(request, context) {
       console.log(`📧 Deleted email_queue entries for general order ${id}`);
     }
 
-    // Also clean email_logs table
-    const { error: emailLogsError } = await supabase
-      .from('email_logs')
-      .delete()
-      .eq('general_order_id', id);
+    // Also clean email_logs table (if general_order_id column exists)
+    try {
+      const { error: emailLogsError } = await supabase
+        .from('email_logs')
+        .delete()
+        .eq('general_order_id', id);
 
-    if (emailLogsError) {
-      console.log('Warning: Could not delete email_logs entries:', emailLogsError);
-    } else {
-      console.log(`📧 Deleted email_logs entries for general order ${id}`);
+      if (emailLogsError) {
+        if (emailLogsError.code === '42703') {
+          // Column doesn't exist - this is expected, skip silently
+          console.log('📧 email_logs table does not have general_order_id column - skipping cleanup');
+        } else {
+          console.log('Warning: Could not delete email_logs entries:', emailLogsError);
+        }
+      } else {
+        console.log(`📧 Deleted email_logs entries for general order ${id}`);
+      }
+    } catch (emailLogsCleanupError) {
+      console.log('Warning: email_logs cleanup failed:', emailLogsCleanupError.message);
     }
 
     // Finally, delete the general order
@@ -320,17 +332,22 @@ export async function DELETE(request, context) {
     // Close the shop if this was the current active order
     try {
       const { error: shopError } = await supabase
-        .rpc('toggle_shop_status', {
-          open_status: false,
-          general_order_id: null,
-          status_message: 'החנות סגורה כרגע. נפתח בהזמנה קבוצתית הבאה.'
-        });
+        .from('shop_status')
+        .update({
+          is_open: false,
+          current_general_order_id: null,
+          message: 'החנות סגורה כרגע. נפתח בהזמנה קבוצתית הבאה.',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', 1);
 
       if (shopError) {
-        console.error('Error closing shop (RPC might not exist):', shopError);
+        console.error('Error closing shop:', shopError);
+      } else {
+        console.log('✅ Shop closed successfully after order deletion');
       }
-    } catch (shopRpcError) {
-      console.error('Shop RPC function not available:', shopRpcError);
+    } catch (shopUpdateError) {
+      console.error('Shop status update error:', shopUpdateError);
     }
 
     return NextResponse.json({

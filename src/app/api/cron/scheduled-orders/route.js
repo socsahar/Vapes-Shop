@@ -322,8 +322,8 @@ async function updateShopStatus(isOpen, orderId, message) {
       .from('shop_status')
       .update({
         is_open: isOpen,
-        status_message: message,
-        general_order_id: orderId,
+        message: message,
+        current_general_order_id: orderId,
         updated_at: new Date().toISOString()
       })
       .eq('id', 1);
