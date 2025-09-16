@@ -202,8 +202,8 @@ async function processOrderConfirmation(emailLog) {
             .from('orders')
             .select(`
                 id, total_amount, status, created_at, general_order_id,
-                users!orders_user_id_fkey(full_name, email),
-                general_orders!orders_general_order_id_fkey(title, description, deadline, status)
+                users(full_name, email),
+                general_orders(title, description, deadline, status)
             `)
             .eq('id', participantOrOrderId)
             .single();
@@ -214,7 +214,7 @@ async function processOrderConfirmation(emailLog) {
                 .from('order_items')
                 .select(`
                     quantity, unit_price,
-                    products!order_items_product_id_fkey(name)
+                    products(name)
                 `)
                 .eq('order_id', order.id);
                 

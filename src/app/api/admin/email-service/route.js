@@ -132,8 +132,8 @@ export async function GET(request) {
     }
 
     // Rate limiting for Resend free tier: max 2 emails per second
-    const RATE_LIMIT_DELAY = 1000; // 1000ms delay between emails (ensures under 2/sec limit)
-    const MAX_EMAILS_PER_BATCH = 2; // Process max 2 emails per API call to avoid rate limiting
+    const RATE_LIMIT_DELAY = 600; // 600ms delay between emails (1.67/sec - safely under 2/sec limit)
+    const MAX_EMAILS_PER_BATCH = 4; // Process max 4 emails per API call for better throughput
 
     // Process only a limited batch to avoid rate limiting
     const emailsToProcess = pendingEmails.slice(0, MAX_EMAILS_PER_BATCH);
@@ -142,16 +142,24 @@ export async function GET(request) {
     let processed = 0;
     let errors = [];
     let serviceStats = { 'Resend API': 0 };
+    let lastEmailTime = 0;
 
     for (const emailLog of emailsToProcess) {
       try {
-        // Add delay between emails to respect rate limits
+        // Smart rate limiting: ensure minimum time between emails
         if (processed > 0) {
-          console.log(`⏱️ Waiting ${RATE_LIMIT_DELAY}ms for rate limiting...`);
-          await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
+          const timeSinceLastEmail = Date.now() - lastEmailTime;
+          const remainingDelay = Math.max(0, RATE_LIMIT_DELAY - timeSinceLastEmail);
+          
+          if (remainingDelay > 0) {
+            console.log(`⏱️ Waiting ${remainingDelay}ms for rate limiting...`);
+            await new Promise(resolve => setTimeout(resolve, remainingDelay));
+          }
         }
-
+        
+        lastEmailTime = Date.now();
         const result = await processEmail(emailLog);
+        
         if (result && result.service) {
           serviceStats[result.service] = (serviceStats[result.service] || 0) + 1;
         }
