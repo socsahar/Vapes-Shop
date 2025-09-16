@@ -191,6 +191,12 @@ async function autoCloseExpiredOrders() {
       // Queue closure emails if not already sent
       if (!order.closure_email_sent) {
         await queueClosureEmails(order);
+        
+        // Mark closure email as sent
+        await supabase
+          .from('general_orders')
+          .update({ closure_email_sent: true })
+          .eq('id', order.id);
       }
       
       closed++;
@@ -361,14 +367,17 @@ async function queueOpeningEmails(order) {
     if (users && users.length > 0) {
       const emails = users.map(user => ({
         recipient_email: user.email,
+        recipient_name: user.full_name,
         subject: `🎉 הזמנה קבוצתית נפתחה - ${order.title}`,
-        body: `GENERAL_ORDER_OPENED:${order.id}`,
+        html_body: `<p>שלום ${user.full_name},</p><p>הזמנה קבוצתית חדשה נפתחה: <strong>${order.title}</strong></p>`,
+        email_type: 'general_order_open',
         user_id: user.id,
         general_order_id: order.id,
-        status: 'failed' // Queue status
+        priority: 3,
+        status: 'pending' // Correct status for email service to find
       }));
 
-      await supabase.from('email_logs').insert(emails);
+      await supabase.from('email_queue').insert(emails);
       console.log(`📧 Queued ${emails.length} opening emails`);
     }
   } catch (error) {

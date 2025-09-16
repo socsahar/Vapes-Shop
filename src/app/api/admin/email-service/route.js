@@ -132,8 +132,8 @@ export async function GET(request) {
     }
 
     // Rate limiting for Resend free tier: max 2 emails per second
-    const RATE_LIMIT_DELAY = 600; // 600ms delay between emails (safer than 1000ms for 2/sec limit)
-    const MAX_EMAILS_PER_BATCH = 3; // Process max 3 emails per API call to avoid rate limiting
+    const RATE_LIMIT_DELAY = 1000; // 1000ms delay between emails (ensures under 2/sec limit)
+    const MAX_EMAILS_PER_BATCH = 2; // Process max 2 emails per API call to avoid rate limiting
 
     // Process only a limited batch to avoid rate limiting
     const emailsToProcess = pendingEmails.slice(0, MAX_EMAILS_PER_BATCH);

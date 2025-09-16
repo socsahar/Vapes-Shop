@@ -223,7 +223,7 @@ export async function POST(request) {
         try {
             // Use the order ID instead of participant ID since we're using orders table
             // Use the order ID directly since we're using orders table
-            emailBody = `USER_ORDER_CONFIRMATION:${orderId}:${general_order_id}`;
+            const emailBody = `USER_ORDER_CONFIRMATION:${orderId}:${general_order_id}`;
 
             const { error: emailError } = await supabaseAdmin
                 .from('email_logs')
