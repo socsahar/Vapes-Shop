@@ -141,9 +141,12 @@ async function processEmail(emailLog) {
         return { success: false, reason: 'Invalid email address - marked as permanently failed' };
     }
 
+    // Get email body from either field (different tables have different field names)
+    const emailBody = emailLog.body || emailLog.html_body || '';
+
     // Handle order confirmations
-    if (emailLog.body.startsWith('USER_ORDER_CONFIRMATION:')) {
-        return await processOrderConfirmation(emailLog);
+    if (emailBody.startsWith('USER_ORDER_CONFIRMATION:')) {
+        return await processOrderConfirmation({ ...emailLog, body: emailBody });
     }
 
     // Handle regular email
@@ -151,7 +154,7 @@ async function processEmail(emailLog) {
         from: SENDER_EMAIL,
         to: emailLog.recipient_email,
         subject: emailLog.subject,
-        html: emailLog.body
+        html: emailBody
     };
 
     const emailResult = await sendEmailWithProviders(mailOptions);
@@ -170,11 +173,14 @@ async function processEmail(emailLog) {
 }
 
 async function processOrderConfirmation(emailLog) {
+    // Get email body from either field (different tables have different field names)
+    const emailBody = emailLog.body || emailLog.html_body || '';
+    
     // Parse format: USER_ORDER_CONFIRMATION:participantId:generalOrderId OR USER_ORDER_CONFIRMATION:orderId:generalOrderId
-    const bodyParts = emailLog.body.split(':');
+    const bodyParts = emailBody.split(':');
     
     if (bodyParts.length !== 3 || bodyParts[0] !== 'USER_ORDER_CONFIRMATION') {
-        console.error('Invalid order confirmation format:', emailLog.body);
+        console.error('Invalid order confirmation format:', emailBody);
         throw new Error('Invalid order confirmation data format');
     }
     
@@ -202,7 +208,7 @@ async function processOrderConfirmation(emailLog) {
             .from('orders')
             .select(`
                 id, total_amount, status, created_at, general_order_id,
-                users(full_name, email),
+                users!orders_user_id_fkey(full_name, email),
                 general_orders(title, description, deadline, status)
             `)
             .eq('id', participantOrOrderId)
@@ -219,7 +225,7 @@ async function processOrderConfirmation(emailLog) {
                 .from('order_items')
                 .select(`
                     quantity, unit_price,
-                    products(name)
+                    products!order_items_product_id_fkey(name)
                 `)
                 .eq('order_id', order.id);
                 
