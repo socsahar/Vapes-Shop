@@ -175,6 +175,18 @@ export async function GET(request) {
           break;
         }
         
+        // Check if it's an orphaned email (order no longer exists)
+        if (error.message && error.message.includes('Order/Participant not found')) {
+          console.log(`🗑️ Removing orphaned email for non-existent order`);
+          // Delete the orphaned email instead of marking as failed
+          const tableName = emailLog.source || 'email_logs';
+          await supabase
+            .from(tableName)
+            .delete()
+            .eq('id', emailLog.id);
+          continue; // Skip to next email
+        }
+        
         // Mark as failed in the correct table for non-rate-limit errors
         const tableName = emailLog.source || 'email_logs';
         const updateData = {

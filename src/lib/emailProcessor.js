@@ -208,6 +208,11 @@ async function processOrderConfirmation(emailLog) {
             .eq('id', participantOrOrderId)
             .single();
             
+        if (orderError) {
+            console.error('Order query error:', orderError);
+            console.log('Searching for order ID:', participantOrOrderId);
+        }
+            
         if (!orderError && order) {
             // Get order items
             const { data: items, error: itemsError } = await supabase
@@ -231,7 +236,9 @@ async function processOrderConfirmation(emailLog) {
                 deadline: order.general_orders?.deadline
             };
         } else {
-            throw new Error('Order not found');
+            console.error('Order not found with ID:', participantOrOrderId);
+            console.error('Database error:', orderError);
+            throw new Error('Order/Participant not found');
         }
 
         // Build order items HTML for template

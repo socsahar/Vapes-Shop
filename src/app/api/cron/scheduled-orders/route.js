@@ -389,24 +389,26 @@ async function queueClosureEmails(order) {
   try {
     // Queue closure notification
     await supabase
-      .from('email_logs')
+      .from('email_queue')
       .insert([{
         recipient_email: 'SYSTEM_ORDER_CLOSED',
         subject: `הזמנה קבוצתית נסגרה - ${order.title}`,
-        body: `GENERAL_ORDER_CLOSED:${order.id}`,
+        html_body: `GENERAL_ORDER_CLOSED:${order.id}`,
+        email_type: 'general_order_close',
         general_order_id: order.id,
-        status: 'failed' // Queue status
+        status: 'pending'
       }]);
       
     // Queue summary email
     await supabase
-      .from('email_logs')
+      .from('email_queue')
       .insert([{
         recipient_email: 'SYSTEM_GENERAL_ORDER_SUMMARY',
         subject: `סיכום הזמנה קבוצתית - ${order.title}`,
-        body: `GENERAL_ORDER_SUMMARY:${order.id}:AUTO_CLOSE`,
+        html_body: `GENERAL_ORDER_SUMMARY:${order.id}:AUTO_CLOSE`,
+        email_type: 'general_order_summary',
         general_order_id: order.id,
-        status: 'failed' // Queue status
+        status: 'pending'
       }]);
       
     console.log(`📧 Queued closure emails for order: ${order.title}`);

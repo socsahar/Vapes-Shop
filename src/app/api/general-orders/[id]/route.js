@@ -133,16 +133,46 @@ export async function PUT(request, { params }) {
                 }
 
                 if (emailType) {
-                    await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/email-service`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            type: emailType,
-                            orderId: updatedOrder.id,
-                            orderTitle: updatedOrder.title,
-                            deadline: updatedOrder.deadline
-                        })
-                    });
+                    // Queue closure emails instead of calling POST endpoint
+                    if (emailType === 'general_order_closed') {
+                        // Queue closure notification in email_queue
+                        await supabaseAdmin
+                            .from('email_queue')
+                            .insert([{
+                                recipient_email: 'SYSTEM_ORDER_CLOSED',
+                                subject: `הזמנה קבוצתית נסגרה - ${updatedOrder.title}`,
+                                html_body: `GENERAL_ORDER_CLOSED:${updatedOrder.id}`,
+                                email_type: 'general_order_close',
+                                general_order_id: updatedOrder.id,
+                                status: 'pending'
+                            }]);
+                        
+                        // Queue summary email
+                        await supabaseAdmin
+                            .from('email_queue')
+                            .insert([{
+                                recipient_email: 'SYSTEM_GENERAL_ORDER_SUMMARY',
+                                subject: `סיכום הזמנה קבוצתית - ${updatedOrder.title}`,
+                                html_body: `GENERAL_ORDER_SUMMARY:${updatedOrder.id}:MANUAL_CLOSE`,
+                                email_type: 'general_order_summary',
+                                general_order_id: updatedOrder.id,
+                                status: 'pending'
+                            }]);
+                            
+                        console.log('📧 Queued closure emails for manually closed order');
+                    } else {
+                        // For other status changes, keep the existing logic
+                        await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/email-service`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                type: emailType,
+                                orderId: updatedOrder.id,
+                                orderTitle: updatedOrder.title,
+                                deadline: updatedOrder.deadline
+                            })
+                        });
+                    }
                 }
             } catch (emailError) {
                 console.error('Failed to send status change notification:', emailError);
