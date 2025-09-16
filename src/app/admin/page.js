@@ -1673,7 +1673,7 @@ export default function AdminPage() {
                                             <thead>
                                                 <tr>
                                                     <th>משתמש</th>
-                                                    <th className="hide-mobile">סוג הזמנה</th>
+                                                    <th className="hide-mobile">הזמנה קבוצתית</th>
                                                     <th>סה"כ</th>
                                                     <th className="hide-mobile">תאריך</th>
                                                     <th>פעולות</th>
@@ -1698,13 +1698,13 @@ export default function AdminPage() {
                                                                 </div>
                                                             </td>
                                                             <td>
-                                                                {order.general_order_id ? (
+                                                                {order.general_order_id && order.general_orders ? (
                                                                     <span className="text-blue-600 font-medium">
-                                                                        📦 הזמנה קבוצתית
+                                                                        📦 {order.general_orders.title}
                                                                     </span>
                                                                 ) : (
-                                                                    <span className="text-gray-600">
-                                                                        🛒 הזמנה רגילה
+                                                                    <span className="text-gray-400">
+                                                                        - לא קבוצתית -
                                                                     </span>
                                                                 )}
                                                             </td>

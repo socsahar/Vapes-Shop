@@ -20,6 +20,11 @@ export async function GET() {
           unit_price,
           total_price,
           products(name, price, description, image_url)
+        ),
+        general_orders(
+          id,
+          title,
+          status
         )
       `)
       .order('created_at', { ascending: false });
@@ -30,18 +35,6 @@ export async function GET() {
         { error: 'שגיאה בטעינת ההזמנות' },
         { status: 500 }
       );
-    }
-
-    // Debug logging
-    console.log('Fetched orders count:', orders?.length || 0);
-    if (orders?.length > 0) {
-      console.log('First order items:', orders[0].order_items?.length || 0);
-      console.log('First order structure:', {
-        id: orders[0].id,
-        total_amount: orders[0].total_amount,
-        has_items: !!orders[0].order_items,
-        items_count: orders[0].order_items?.length || 0
-      });
     }
 
     // Fetch user data separately for each order
