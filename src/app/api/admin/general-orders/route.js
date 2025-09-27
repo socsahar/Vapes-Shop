@@ -26,23 +26,7 @@ async function queueOpeningEmails(generalOrder) {
       recipient_email: user.email,
       recipient_name: user.full_name,
       subject: `🎉 הזמנה קבוצתית נפתחה - ${generalOrder.title}`,
-      html_body: `
-        <div dir="rtl" style="font-family: Arial, sans-serif;">
-          <h2>שלום ${user.full_name},</h2>
-          <p>הזמנה קבוצתית חדשה נפתחה!</p>
-          <h3>${generalOrder.title}</h3>
-          ${generalOrder.description ? `<p>${generalOrder.description}</p>` : ''}
-          <p><strong>תאריך סגירה:</strong> ${new Date(generalOrder.deadline).toLocaleDateString('he-IL', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          })}</p>
-          <p>היכנס לאתר כדי להצטרף להזמנה!</p>
-        </div>
-      `,
+      html_body: `GENERAL_ORDER_OPENED:${generalOrder.id}`, // Use template system instead of plain HTML
       email_type: 'general_order_open',
       user_id: user.id,
       general_order_id: generalOrder.id,

@@ -444,14 +444,17 @@ async function queueReminderEmails(order, reminderType) {
     if (users && users.length > 0) {
       const emails = users.map(user => ({
         recipient_email: user.email,
+        recipient_name: user.full_name,
         subject: `⏰ תזכורת: הזמנה קבוצתית נסגרת בקרוב - ${order.title}`,
-        body: `GENERAL_ORDER_REMINDER_${reminderType.toUpperCase()}:${order.id}`,
+        html_body: `GENERAL_ORDER_REMINDER_${reminderType.toUpperCase()}:${order.id}`, // Use template system
+        email_type: 'general_order_reminder',
         user_id: user.id,
         general_order_id: order.id,
-        status: 'failed' // Queue status
+        priority: 2,
+        status: 'pending' // Use correct status for email service
       }));
 
-      await supabase.from('email_logs').insert(emails);
+      await supabase.from('email_queue').insert(emails); // Use email_queue instead of email_logs
       console.log(`📧 Queued ${emails.length} reminder emails (${reminderType})`);
     }
   } catch (error) {

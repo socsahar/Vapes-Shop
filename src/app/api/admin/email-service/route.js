@@ -443,8 +443,8 @@ async function processTemplatedEmail(emailLog, templateType) {
       '{{unsubscribe_url}}': `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/unsubscribe`, // Database uses this format
       
       // Dates
-      '{{current_date}}': new Date().toLocaleDateString('he-IL'),
-      '{{current_year}}': new Date().getFullYear().toString(),
+      '{{current_date}}': new Date().toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem' }),
+      '{{current_year}}': new Date().toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', year: 'numeric' }),
       
       // Special data
       '{{trigger_type}}': orderData.triggerType || '',
@@ -903,7 +903,15 @@ async function sendOrderOpenedNotifications(body) {
     const htmlBody = template.body_template
       .replace(/{{title}}/g, order.title)
       .replace(/{{description}}/g, order.description || '')
-      .replace(/{{deadline}}/g, new Date(order.deadline).toLocaleString('he-IL'))
+      .replace(/{{deadline}}/g, new Date(order.deadline).toLocaleString('he-IL', {
+        timeZone: 'Asia/Jerusalem',
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }))
       .replace(/{{shop_url}}/g, `${process.env.NEXT_PUBLIC_SITE_URL}/shop`)
       .replace(/{{unsubscribe_url}}/g, `${process.env.NEXT_PUBLIC_SITE_URL}/unsubscribe`);
 
@@ -1416,8 +1424,8 @@ async function sendGeneralOrderSummary(body) {
     const personalizedBody = template.body_template
       .replace(/{{order_title}}/g, order.title || 'הזמנה קבוצתית')
       .replace(/{{order_description}}/g, order.description || 'אין תיאור')
-      .replace(/{{order_created}}/g, new Date(order.created_at).toLocaleDateString('he-IL'))
-      .replace(/{{order_closed}}/g, new Date().toLocaleDateString('he-IL'))
+      .replace(/{{order_created}}/g, new Date(order.created_at).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' }))
+      .replace(/{{order_closed}}/g, new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' }))
       .replace(/{{creator_name}}/g, order.creator?.full_name || order.creator?.email || 'לא ידוע')
       .replace(/{{order_status}}/g, order.status === 'closed' ? 'סגורה' : 'פעילה')
       .replace(/{{total_participants}}/g, totalParticipants)
