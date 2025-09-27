@@ -277,23 +277,38 @@ async function sendReminderEmails() {
 async function processEmailQueue() {
   console.log('📧 Processing email queue...');
   
-  // Get pending emails from email_logs (status='failed' used as queue)
-  const { data: pendingEmails, error } = await supabase
+  // Check both email_queue (status='pending') and email_logs (status='failed') tables
+  let totalPending = 0;
+  
+  // Check email_queue table
+  const { data: queueEmails, error: queueError } = await supabase
+    .from('email_queue')
+    .select('*')
+    .eq('status', 'pending')
+    .lt('attempts', 3)
+    .limit(5);
+
+  if (!queueError && queueEmails) {
+    totalPending += queueEmails.length;
+  }
+
+  // Check email_logs table  
+  const { data: logEmails, error: logError } = await supabase
     .from('email_logs')
     .select('*')
     .eq('status', 'failed')
-    .limit(5); // Process only a few to avoid timeouts
+    .limit(5);
 
-  if (error) {
-    throw new Error(`Error fetching email queue: ${error.message}`);
+  if (!logError && logEmails) {
+    totalPending += logEmails.length;
   }
 
-  if (!pendingEmails || pendingEmails.length === 0) {
+  if (totalPending === 0) {
     console.log('📭 No pending emails in queue');
     return { processed: 0 };
   }
 
-  console.log(`📧 Found ${pendingEmails.length} pending emails to process`);
+  console.log(`📧 Found ${totalPending} pending emails to process`);
   
   // Trigger email processing via API
   try {
@@ -312,6 +327,8 @@ async function processEmailQueue() {
         const result = await response.json();
         console.log('📧 Email processing result:', result.message);
         return { processed: result.processed || 0 };
+      } else {
+        console.error('❌ Email service error:', response.status, response.statusText);
       }
     }
   } catch (error) {

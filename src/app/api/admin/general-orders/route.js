@@ -46,7 +46,8 @@ async function queueOpeningEmails(generalOrder) {
       email_type: 'general_order_open',
       user_id: user.id,
       general_order_id: generalOrder.id,
-      priority: 3
+      priority: 3,
+      status: 'pending' // CRITICAL: Set status for email service to find
     }));
 
     // Try to use email_queue table first
