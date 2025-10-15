@@ -45,9 +45,9 @@ class OneSignalService {
             headings: { en: title },
             contents: { en: body },
             
-            // Target audience - use 'Active Users' or 'Engaged Users' for all subscribers
+            // Target audience - use 'Subscribed Users' for all subscribers
             ...(audience === 'all' ? {
-                included_segments: ['Active Users', 'Engaged Users']
+                included_segments: ['Subscribed Users']
             } : audience === 'admins_only' ? {
                 filters: [{ field: 'tag', key: 'role', relation: '=', value: 'admin' }]
             } : {
