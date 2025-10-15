@@ -123,17 +123,26 @@ export default function AdminPage() {
     const router = useRouter();
 
     useEffect(() => {
-        const currentUser = getCurrentUser();
-        if (!currentUser) {
-            router.push('/auth/login');
-            return;
-        }
-        if (currentUser.role !== 'admin') {
-            router.push('/shop');
-            return;
-        }
-        setUser(currentUser);
-        setLoading(false);
+        const checkAuth = async () => {
+            try {
+                const currentUser = await getCurrentUser();
+                if (!currentUser) {
+                    router.push('/auth/login');
+                    return;
+                }
+                if (currentUser.role !== 'admin') {
+                    router.push('/shop');
+                    return;
+                }
+                setUser(currentUser);
+                setLoading(false);
+            } catch (error) {
+                console.error('Error checking auth:', error);
+                router.push('/auth/login');
+            }
+        };
+        
+        checkAuth();
     }, [router]);
 
     const handleLogout = async () => {

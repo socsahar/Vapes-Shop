@@ -20,21 +20,30 @@ export default function CheckoutPage() {
     const router = useRouter();
 
     useEffect(() => {
-        const currentUser = getCurrentUser();
-        if (!currentUser) {
-            router.push('/auth/login');
-            return;
-        }
-        setUser(currentUser);
+        const checkAuth = async () => {
+            try {
+                const currentUser = await getCurrentUser();
+                if (!currentUser) {
+                    router.push('/auth/login');
+                    return;
+                }
+                setUser(currentUser);
+                
+                // Pre-fill form with user data
+                setOrderForm(prev => ({
+                    ...prev,
+                    phone: currentUser.phone || ''
+                }));
+                
+                loadCart();
+                setLoading(false);
+            } catch (error) {
+                console.error('Error checking auth:', error);
+                router.push('/auth/login');
+            }
+        };
         
-        // Pre-fill form with user data
-        setOrderForm(prev => ({
-            ...prev,
-            phone: currentUser.phone || ''
-        }));
-        
-        loadCart();
-        setLoading(false);
+        checkAuth();
     }, [router]);
 
     const loadCart = () => {
