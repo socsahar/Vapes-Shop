@@ -45,9 +45,9 @@ class OneSignalService {
             headings: { en: title },
             contents: { en: body },
             
-            // Target audience
+            // Target audience - use 'Active Users' or 'Engaged Users' for all subscribers
             ...(audience === 'all' ? {
-                included_segments: ['Subscribed Users']  // Changed from 'All' to 'Subscribed Users'
+                included_segments: ['Active Users', 'Engaged Users']
             } : audience === 'admins_only' ? {
                 filters: [{ field: 'tag', key: 'role', relation: '=', value: 'admin' }]
             } : {
@@ -77,11 +77,15 @@ class OneSignalService {
         };
 
         try {
+            // Check if using v2 API key format
+            const isV2Key = this.apiKey.startsWith('os_v2_');
+            
             const response = await fetch(`${this.apiUrl}/notifications`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Basic ${this.apiKey}`
+                    // v2 keys use Bearer, v1 keys use Basic
+                    'Authorization': isV2Key ? `Bearer ${this.apiKey}` : `Basic ${this.apiKey}`
                 },
                 body: JSON.stringify(payload)
             });
