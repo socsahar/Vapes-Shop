@@ -39,15 +39,15 @@ class OneSignalService {
             scheduledAt = null
         } = notification;
 
-        // Build OneSignal payload
+        // Build OneSignal payload  
         const payload = {
             app_id: this.appId,
-            headings: { en: title },
-            contents: { en: body },
+            headings: { en: title, he: title }, // Add Hebrew support
+            contents: { en: body, he: body }, // Add Hebrew support
             
-            // Target audience - send to ALL subscribed users
+            // Target audience - try "Total Subscriptions" which should work on free plan
             ...(audience === 'all' ? {
-                included_segments: ['All']
+                included_segments: ["Total Subscriptions"]
             } : audience === 'admins_only' ? {
                 filters: [{ field: 'tag', key: 'role', relation: '=', value: 'admin' }]
             } : {
