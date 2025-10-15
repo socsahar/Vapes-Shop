@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { storeUserSession, getUserSession, clearUserSession } from './authStorage'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -58,18 +59,10 @@ export const supabaseAdmin = supabaseUrl ? createClient(
   }
 ) : null
 
-// Helper function to get current user from localStorage (client-side)
+// Helper function to get current user from persistent storage (client-side)
 export const getCurrentUser = () => {
   if (typeof window !== 'undefined') {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      try {
-        return JSON.parse(userStr);
-      } catch (error) {
-        console.error('Error parsing user from localStorage:', error);
-        localStorage.removeItem('user');
-      }
-    }
+    return getUserSession();
   }
   return null;
 }
@@ -166,9 +159,9 @@ export const signInWithPassword = async (username, password) => {
             return { data: null, error: { message: data.error } };
         }
 
-        // Store user in localStorage for session management
+        // Store user with persistent storage (survives app restarts)
         if (typeof window !== 'undefined') {
-            localStorage.setItem('user', JSON.stringify(data.user));
+            storeUserSession(data.user);
         }
 
         return { data, error: null };
@@ -206,7 +199,7 @@ export const signOut = async () => {
         });
 
         if (typeof window !== 'undefined') {
-            localStorage.removeItem('user');
+            clearUserSession();
         }
 
         return { error: null };

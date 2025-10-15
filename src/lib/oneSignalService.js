@@ -47,7 +47,7 @@ class OneSignalService {
             
             // Target audience
             ...(audience === 'all' ? {
-                included_segments: ['All']
+                included_segments: ['Subscribed Users']  // Changed from 'All' to 'Subscribed Users'
             } : audience === 'admins_only' ? {
                 filters: [{ field: 'tag', key: 'role', relation: '=', value: 'admin' }]
             } : {
@@ -88,14 +88,22 @@ class OneSignalService {
 
             const result = await response.json();
 
+            console.log('OneSignal API Response:', result);
+
             if (!response.ok) {
+                console.error('OneSignal API Error Response:', result);
                 throw new Error(result.errors?.[0] || 'Failed to send notification');
             }
 
+            // OneSignal returns 'recipients' field with number of devices notified
+            const recipientCount = result.recipients || 0;
+            
+            console.log(`OneSignal sent to ${recipientCount} recipients`);
+
             return {
                 success: true,
-                notificationId: result.id,
-                recipients: result.recipients || 0,
+                id: result.id,
+                recipients: recipientCount,
                 externalId: result.external_id
             };
         } catch (error) {
