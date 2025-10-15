@@ -39,20 +39,31 @@ class OneSignalService {
             scheduledAt = null
         } = notification;
 
+        // For 'all' audience, get player IDs directly from OneSignal API
+        let targetingConfig = {};
+        if (audience === 'all') {
+            const playerIds = await this.getAllPlayerIds();
+            console.log(`Found ${playerIds.length} subscribed players`);
+            if (playerIds.length > 0) {
+                targetingConfig = { include_player_ids: playerIds };
+            } else {
+                // Fallback to segment if no players found
+                targetingConfig = { included_segments: ["All"] };
+            }
+        } else if (audience === 'admins_only') {
+            targetingConfig = {
+                filters: [{ field: 'tag', key: 'role', relation: '=', value: 'admin' }]
+            };
+        } else {
+            targetingConfig = { include_external_user_ids: userIds };
+        }
+
         // Build OneSignal payload  
         const payload = {
             app_id: this.appId,
             headings: { en: title, he: title }, // Add Hebrew support
             contents: { en: body, he: body }, // Add Hebrew support
-            
-            // Target audience - try "Total Subscriptions" which should work on free plan
-            ...(audience === 'all' ? {
-                included_segments: ["Total Subscriptions"]
-            } : audience === 'admins_only' ? {
-                filters: [{ field: 'tag', key: 'role', relation: '=', value: 'admin' }]
-            } : {
-                include_external_user_ids: userIds // For specific users
-            }),
+            ...targetingConfig,
 
             // URL to open when notification is clicked
             url: url || undefined,
@@ -138,6 +149,39 @@ class OneSignalService {
             ...notification,
             audience: 'all'
         });
+    }
+
+    /**
+     * Get all subscribed player IDs from OneSignal
+     */
+    async getAllPlayerIds() {
+        try {
+            const isV2Key = this.apiKey.startsWith('os_v2_');
+            const response = await fetch(
+                `${this.apiUrl}/players?app_id=${this.appId}&limit=300`,
+                {
+                    headers: {
+                        'Authorization': isV2Key ? `Bearer ${this.apiKey}` : `Basic ${this.apiKey}`
+                    }
+                }
+            );
+
+            const result = await response.json();
+            
+            if (result.players) {
+                // Filter for subscribed players only
+                const subscribedPlayers = result.players.filter(p => 
+                    p.invalid_identifier === false && 
+                    p.notification_types >= 0
+                );
+                return subscribedPlayers.map(p => p.id);
+            }
+            
+            return [];
+        } catch (error) {
+            console.error('Failed to get player IDs:', error);
+            return [];
+        }
     }
 
     /**
