@@ -60,9 +60,10 @@ export const supabaseAdmin = supabaseUrl ? createClient(
 ) : null
 
 // Helper function to get current user from persistent storage (client-side)
-export const getCurrentUser = () => {
+// Now async to support Median native storage
+export const getCurrentUser = async () => {
   if (typeof window !== 'undefined') {
-    return getUserSession();
+    return await getUserSession();
   }
   return null;
 }
@@ -107,8 +108,8 @@ export const getCurrentUserFromRequest = async (request) => {
 }
 
 // Helper function to get authentication headers for API requests
-export const getAuthHeaders = () => {
-  const user = getCurrentUser();
+export const getAuthHeaders = async () => {
+  const user = await getCurrentUser();
   if (!user) {
     return {};
   }
@@ -124,7 +125,7 @@ export const getAuthHeaders = () => {
 
 // Helper function to make authenticated API requests
 export const makeAuthenticatedRequest = async (url, options = {}) => {
-  const authHeaders = getAuthHeaders();
+  const authHeaders = await getAuthHeaders();
   
   return fetch(url, {
     ...options,
@@ -137,8 +138,8 @@ export const makeAuthenticatedRequest = async (url, options = {}) => {
 }
 
 // Helper function to check if user is admin
-export const isUserAdmin = () => {
-  const user = getCurrentUser();
+export const isUserAdmin = async () => {
+  const user = await getCurrentUser();
   return user?.role === 'admin';
 }
 
