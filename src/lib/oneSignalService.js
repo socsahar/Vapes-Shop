@@ -92,17 +92,20 @@ class OneSignalService {
 
             const result = await response.json();
 
-            console.log('OneSignal API Response:', result);
+            console.log('OneSignal API Response:', JSON.stringify(result, null, 2));
 
             if (!response.ok) {
-                console.error('OneSignal API Error Response:', result);
+                console.error('OneSignal API Error Response:', JSON.stringify(result, null, 2));
+                console.error('OneSignal Payload Sent:', JSON.stringify(payload, null, 2));
                 throw new Error(result.errors?.[0] || 'Failed to send notification');
             }
 
             // OneSignal returns 'recipients' field with number of devices notified
             const recipientCount = result.recipients || 0;
             
-            console.log(`OneSignal sent to ${recipientCount} recipients`);
+            console.log(`✅ OneSignal sent successfully!`);
+            console.log(`   Recipients: ${recipientCount}`);
+            console.log(`   Notification ID: ${result.id}`);
 
             return {
                 success: true,

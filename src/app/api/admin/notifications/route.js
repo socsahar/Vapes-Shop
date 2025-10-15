@@ -56,7 +56,7 @@ class NotificationService {
                     console.log('Sending notification via OneSignal:', insertedNotification);
                     const oneSignalResponse = await oneSignal.sendNotification({
                         title: insertedNotification.title,
-                        message: insertedNotification.body,
+                        body: insertedNotification.body, // Fixed: was 'message', should be 'body'
                         icon: insertedNotification.icon,
                         image: insertedNotification.image,
                         url: insertedNotification.url,
