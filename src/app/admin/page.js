@@ -96,6 +96,30 @@ export default function AdminPage() {
     const [systemStatusLoading, setSystemStatusLoading] = useState(false);
     const [statusRefreshInterval, setStatusRefreshInterval] = useState(null);
     const [manualCronLoading, setManualCronLoading] = useState(false);
+    
+    // Notifications State
+    const [notifications, setNotifications] = useState([]);
+    const [notificationsLoading, setNotificationsLoading] = useState(false);
+    const [notificationStats, setNotificationStats] = useState({});
+    const [showNotificationModal, setShowNotificationModal] = useState(false);
+    const [notificationForm, setNotificationForm] = useState({
+        title: '',
+        message: '',
+        audience: 'all',
+        userIds: [],
+        scheduledAt: '',
+        icon: '',
+        image: '',
+        url: '',
+        template: ''
+    });
+    const [notificationTemplates, setNotificationTemplates] = useState([]);
+    const [templatesLoading, setTemplatesLoading] = useState(false);
+    const [availableUsers, setAvailableUsers] = useState([]);
+    const [usersForNotificationLoading, setUsersForNotificationLoading] = useState(false);
+    const [sendNotificationLoading, setSendNotificationLoading] = useState(false);
+    const [selectedTemplate, setSelectedTemplate] = useState(null);
+    
     const router = useRouter();
 
     useEffect(() => {
@@ -1112,6 +1136,247 @@ export default function AdminPage() {
         });
     };
 
+    // Notification Functions
+    const fetchNotifications = async () => {
+        try {
+            setNotificationsLoading(true);
+            const response = await fetch('/api/admin/notifications');
+            if (response.ok) {
+                const data = await response.json();
+                setNotifications(data.notifications || []);
+                setNotificationStats(data.stats || {});
+            }
+        } catch (error) {
+            console.error('Error fetching notifications:', error);
+        } finally {
+            setNotificationsLoading(false);
+        }
+    };
+
+    const fetchNotificationTemplates = async () => {
+        try {
+            setTemplatesLoading(true);
+            const response = await fetch('/api/admin/notifications/templates');
+            if (response.ok) {
+                const data = await response.json();
+                setNotificationTemplates(data.templates || []);
+            }
+        } catch (error) {
+            console.error('Error fetching templates:', error);
+        } finally {
+            setTemplatesLoading(false);
+        }
+    };
+
+    const fetchUsersForNotifications = async (role = null) => {
+        try {
+            console.log('fetchUsersForNotifications called with role:', role);
+            setUsersForNotificationLoading(true);
+            
+            // Always use the main users endpoint (it works!)
+            const response = await fetch('/api/admin/users');
+            
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Received data:', data);
+                let users = data.users || [];
+                console.log('Users before filter:', users.length);
+                
+                // Filter by role if needed
+                if (role && users.length > 0) {
+                    // Filter based on role: 'customer' or 'admin'
+                    users = users.filter(user => {
+                        const userRole = user.role || 'customer'; // Default to 'customer' if role is null
+                        return userRole === role;
+                    });
+                    console.log(`Users after role filter (${role}):`, users.length);
+                }
+                
+                // Map to consistent format
+                const mappedUsers = users.map(user => ({
+                    id: user.id,
+                    name: user.full_name || user.name,
+                    email: user.email,
+                    phone: user.phone || 'N/A',
+                    role: user.role || 'customer'
+                }));
+                
+                console.log('Setting available users:', mappedUsers.length);
+                setAvailableUsers(mappedUsers);
+            } else {
+                console.error('Failed to fetch users, status:', response.status);
+                setAvailableUsers([]);
+                showToast('לא ניתן לטעון רשימת משתמשים', 'error');
+            }
+        } catch (error) {
+            console.error('Error fetching users for notifications:', error);
+            setAvailableUsers([]);
+            showToast('שגיאה בטעינת משתמשים', 'error');
+        } finally {
+            console.log('fetchUsersForNotifications finished');
+            setUsersForNotificationLoading(false);
+        }
+    };
+
+    const handleCreateNotification = () => {
+        setNotificationForm({
+            title: '',
+            message: '',
+            audience: 'all',
+            userIds: [],
+            scheduledAt: '',
+            icon: '',
+            image: '',
+            url: '',
+            template: ''
+        });
+        setSelectedTemplate(null);
+        setShowNotificationModal(true);
+        fetchNotificationTemplates();
+        fetchUsersForNotifications();
+    };
+
+    const handleSelectTemplate = (template) => {
+        setSelectedTemplate(template);
+        setNotificationForm(prev => ({
+            ...prev,
+            title: template.title,
+            message: template.body,
+            icon: template.icon,
+            url: template.url,
+            template: template.id
+        }));
+    };
+
+    const handleNotificationFormChange = (e) => {
+        const { name, value } = e.target;
+        setNotificationForm(prev => ({
+            ...prev,
+            [name]: value
+        }));
+    };
+
+    const handleAudienceChange = (audience) => {
+        console.log('Audience changed to:', audience);
+        setNotificationForm(prev => ({
+            ...prev,
+            audience,
+            userIds: audience !== 'specific_users' ? [] : prev.userIds
+        }));
+        
+        if (audience === 'specific_users') {
+            console.log('Fetching customers...');
+            fetchUsersForNotifications('customer');
+        } else if (audience === 'admins_only') {
+            console.log('Fetching admins...');
+            fetchUsersForNotifications('admin');
+        }
+    };
+
+    const handleUserSelection = (userId, isSelected) => {
+        setNotificationForm(prev => ({
+            ...prev,
+            userIds: isSelected 
+                ? [...prev.userIds, userId]
+                : prev.userIds.filter(id => id !== userId)
+        }));
+    };
+
+    const handleSendNotification = async (e) => {
+        e.preventDefault();
+        
+        if (!notificationForm.title || !notificationForm.message) {
+            showToast('נא למלא כותרת והודעה', 'error');
+            return;
+        }
+
+        if (notificationForm.audience === 'specific_users' && notificationForm.userIds.length === 0) {
+            showToast('נא לבחור לפחות משתמש אחד', 'error');
+            return;
+        }
+
+        try {
+            setSendNotificationLoading(true);
+            
+            const response = await fetch('/api/admin/notifications', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    title: notificationForm.title,
+                    message: notificationForm.message,
+                    audience: notificationForm.audience,
+                    userIds: notificationForm.userIds,
+                    scheduledAt: notificationForm.scheduledAt || null,
+                    icon: notificationForm.icon,
+                    image: notificationForm.image,
+                    url: notificationForm.url,
+                    createdBy: user?.id
+                })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                setShowNotificationModal(false);
+                fetchNotifications();
+                showToast(
+                    notificationForm.scheduledAt 
+                        ? `🕐 התראה תוזמנה ל-${new Date(notificationForm.scheduledAt).toLocaleString('he-IL')}`
+                        : `✅ התראה נשלחה ל-${result.notification?.sent_count || 0} משתמשים!`, 
+                    'success'
+                );
+            } else {
+                showToast(`שגיאה בשליחת ההתראה: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error sending notification:', error);
+            showToast('שגיאה בשליחת ההתראה', 'error');
+        } finally {
+            setSendNotificationLoading(false);
+        }
+    };
+
+    const handleDeleteNotification = async (notificationId) => {
+        if (!confirm('האם אתה בטוח שברצונך למחוק את ההתראה?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/admin/notifications?id=${notificationId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                fetchNotifications();
+                showToast('התראה נמחקה בהצלחה!', 'success');
+            } else {
+                const result = await response.json();
+                showToast(`שגיאה במחיקת ההתראה: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting notification:', error);
+            showToast('שגיאה במחיקת ההתראה', 'error');
+        }
+    };
+
+    const handleCloseNotificationModal = () => {
+        setShowNotificationModal(false);
+        setNotificationForm({
+            title: '',
+            message: '',
+            audience: 'all',
+            userIds: [],
+            scheduledAt: '',
+            icon: '',
+            image: '',
+            url: '',
+            template: ''
+        });
+        setSelectedTemplate(null);
+    };
+
     // Auto-refresh only for Recent Activity section
     useEffect(() => {
         let interval;
@@ -1143,6 +1408,8 @@ export default function AdminPage() {
             fetchAllOrders();
         } else if (activeTab === 'group-orders') {
             fetchGeneralOrders();
+        } else if (activeTab === 'notifications') {
+            fetchNotifications();
         } else if (activeTab === 'system-status') {
             fetchSystemStatus(true); // Initial load with spinner
             startStatusAutoRefresh();
@@ -1175,6 +1442,7 @@ export default function AdminPage() {
         { id: 'products', name: 'מוצרים', icon: '📦' },
         { id: 'orders', name: 'הזמנות', icon: '🛒' },
         { id: 'group-orders', name: 'הזמנות קבוצתיות', icon: '👥🛒' },
+        { id: 'notifications', name: 'התראות פוש', icon: '🔔' },
         { id: 'system-status', name: 'סטטוס מערכת', icon: '🖥️' },
         { id: 'settings', name: 'הגדרות', icon: '⚙️' }
     ];
@@ -2404,6 +2672,170 @@ export default function AdminPage() {
                         </div>
                     )}
 
+                    {activeTab === 'notifications' && (
+                        <div className="admin-content">
+                            <div className="admin-page-header">
+                                <div>
+                                    <h2 className="admin-page-title">ניהול התראות פוש</h2>
+                                    <p className="admin-page-subtitle">שליחת התראות לאפליקציה ומעקב אחר ביצועים</p>
+                                </div>
+                                <div className="admin-page-actions">
+                                    <button 
+                                        onClick={fetchNotifications}
+                                        className="admin-btn-secondary"
+                                    >
+                                        <span className="ml-2">🔄</span>
+                                        רענן
+                                    </button>
+                                    <button 
+                                        onClick={handleCreateNotification}
+                                        className="admin-btn-primary"
+                                    >
+                                        <span className="ml-2">🔔</span>
+                                        שלח התראה חדשה
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Notification Stats */}
+                            <div className="admin-stats-grid" style={{gridTemplateColumns: 'repeat(5, 1fr)'}}>
+                                <div className="admin-stat-card notifications-total">
+                                    <div className="admin-stat-icon">📊</div>
+                                    <div className="admin-stat-content">
+                                        <div className="admin-stat-number">{notificationStats.total || 0}</div>
+                                        <div className="admin-stat-label">סה"כ התראות</div>
+                                    </div>
+                                </div>
+                                <div className="admin-stat-card notifications-sent">
+                                    <div className="admin-stat-icon">✅</div>
+                                    <div className="admin-stat-content">
+                                        <div className="admin-stat-number">{notificationStats.sent || 0}</div>
+                                        <div className="admin-stat-label">נשלחו</div>
+                                    </div>
+                                </div>
+                                <div className="admin-stat-card notifications-scheduled">
+                                    <div className="admin-stat-icon">⏰</div>
+                                    <div className="admin-stat-content">
+                                        <div className="admin-stat-number">{notificationStats.scheduled || 0}</div>
+                                        <div className="admin-stat-label">מתוזמנות</div>
+                                    </div>
+                                </div>
+                                <div className="admin-stat-card notifications-delivered">
+                                    <div className="admin-stat-icon">📲</div>
+                                    <div className="admin-stat-content">
+                                        <div className="admin-stat-number">{notificationStats.totalSent || 0}</div>
+                                        <div className="admin-stat-label">הגיעו למשתמשים</div>
+                                    </div>
+                                </div>
+                                <div className="admin-stat-card notifications-clicks">
+                                    <div className="admin-stat-icon">👆</div>
+                                    <div className="admin-stat-content">
+                                        <div className="admin-stat-number">{notificationStats.clickRate || 0}%</div>
+                                        <div className="admin-stat-label">שיעור לחיצות</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Notifications List */}
+                            <div className="admin-section">
+                                <div className="admin-section-header">
+                                    <h3 className="admin-section-title">היסטוריית התראות</h3>
+                                </div>
+                                {notificationsLoading ? (
+                                    <div className="admin-loading">
+                                        <div className="spinner"></div>
+                                        <p>טוען התראות...</p>
+                                    </div>
+                                ) : notifications.length > 0 ? (
+                                    <div className="notifications-list">
+                                        {notifications.map((notification) => (
+                                            <div key={notification.id} className={`notification-card ${notification.status}`}>
+                                                <div className="notification-header">
+                                                    <div className="notification-title-section">
+                                                        <div className="notification-icon">
+                                                            {notification.icon || '🔔'}
+                                                        </div>
+                                                        <div className="notification-info">
+                                                            <h4 className="notification-title">{notification.title}</h4>
+                                                            <p className="notification-body">{notification.body}</p>
+                                                            <div className="notification-meta">
+                                                                <span className="notification-date">
+                                                                    {new Date(notification.created_at).toLocaleString('he-IL')}
+                                                                </span>
+                                                                <span className="notification-audience">
+                                                                    {notification.audience === 'all' && '🌐 כל המשתמשים'}
+                                                                    {notification.audience === 'specific_users' && `👥 ${notification.userIds?.length || 0} משתמשים נבחרים`}
+                                                                    {notification.audience === 'admins_only' && '👑 מנהלים בלבד'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="notification-status">
+                                                        <div className={`status-badge ${notification.status}`}>
+                                                            {notification.status === 'sent' && '✅ נשלח'}
+                                                            {notification.status === 'scheduled' && '⏰ מתוזמן'}
+                                                            {notification.status === 'failed' && '❌ נכשל'}
+                                                        </div>
+                                                        <button 
+                                                            className="admin-btn-small delete"
+                                                            onClick={() => handleDeleteNotification(notification.id)}
+                                                            title="מחק התראה"
+                                                        >
+                                                            🗑️
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="notification-stats">
+                                                    <div className="stat-item">
+                                                        <span className="stat-label">נשלח:</span>
+                                                        <span className="stat-value">{notification.sent_count || 0}</span>
+                                                    </div>
+                                                    <div className="stat-item">
+                                                        <span className="stat-label">הגיע:</span>
+                                                        <span className="stat-value">{notification.delivered_count || 0}</span>
+                                                    </div>
+                                                    <div className="stat-item">
+                                                        <span className="stat-label">לחצו:</span>
+                                                        <span className="stat-value">{notification.clicked_count || 0}</span>
+                                                    </div>
+                                                    {notification.url && (
+                                                        <div className="stat-item">
+                                                            <span className="stat-label">קישור:</span>
+                                                            <a href={notification.url} className="stat-link" target="_blank" rel="noopener noreferrer">
+                                                                {notification.url}
+                                                            </a>
+                                                        </div>
+                                                    )}
+                                                    {notification.scheduled_at && notification.status === 'scheduled' && (
+                                                        <div className="stat-item">
+                                                            <span className="stat-label">מתוזמן ל:</span>
+                                                            <span className="stat-value scheduled-time">
+                                                                {new Date(notification.scheduled_at).toLocaleString('he-IL')}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="admin-empty-state">
+                                        <div className="admin-empty-icon">🔔</div>
+                                        <p className="admin-empty-text">אין התראות נשלחות</p>
+                                        <p className="admin-empty-subtext">שלח התראה ראשונה למשתמשי האפליקציה</p>
+                                        <button 
+                                            onClick={handleCreateNotification}
+                                            className="admin-btn-primary mt-4"
+                                        >
+                                            <span className="ml-2">🔔</span>
+                                            שלח התראה ראשונה
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {activeTab === 'settings' && (
                         <div className="admin-content">
                             <div className="admin-page-header">
@@ -3094,6 +3526,267 @@ export default function AdminPage() {
                                     disabled={generalOrderLoading}
                                 >
                                     {generalOrderLoading ? 'שומר...' : (editingGeneralOrder ? 'עדכן הזמנה' : 'צור הזמנה קבוצתית')}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Notification Modal */}
+            {showNotificationModal && (
+                <div className="admin-modal-overlay" onClick={handleCloseNotificationModal}>
+                    <div className="admin-modal notification-modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="admin-modal-header">
+                            <h3>🔔 שליחת התראת פוש</h3>
+                            <button 
+                                className="admin-modal-close"
+                                onClick={handleCloseNotificationModal}
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        
+                        <form onSubmit={handleSendNotification} className="admin-modal-form">
+                            {/* Template Selection */}
+                            {!templatesLoading && notificationTemplates.length > 0 && (
+                                <div className="form-group">
+                                    <label>תבניות מוכנות (אופציונלי)</label>
+                                    <div className="templates-grid">
+                                        {notificationTemplates.map((template) => (
+                                            <button
+                                                key={template.id}
+                                                type="button"
+                                                className={`template-button ${selectedTemplate?.id === template.id ? 'selected' : ''}`}
+                                                onClick={() => handleSelectTemplate(template)}
+                                            >
+                                                <span className="template-icon">{template.icon}</span>
+                                                <span className="template-name">{template.name}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {selectedTemplate && (
+                                        <small className="form-help success">
+                                            ✅ נבחרה תבנית: {selectedTemplate.name}
+                                        </small>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Title */}
+                            <div className="form-group">
+                                <label htmlFor="notification_title">כותרת ההתראה *</label>
+                                <input
+                                    type="text"
+                                    id="notification_title"
+                                    name="title"
+                                    value={notificationForm.title}
+                                    onChange={handleNotificationFormChange}
+                                    required
+                                    dir="auto"
+                                    placeholder="כותרת קצרה ומושכת"
+                                    maxLength="50"
+                                />
+                                <small className="form-help">
+                                    {notificationForm.title.length}/50 תווים
+                                </small>
+                            </div>
+
+                            {/* Message */}
+                            <div className="form-group">
+                                <label htmlFor="notification_message">תוכן ההודעה *</label>
+                                <textarea
+                                    id="notification_message"
+                                    name="message"
+                                    value={notificationForm.message}
+                                    onChange={handleNotificationFormChange}
+                                    required
+                                    dir="auto"
+                                    placeholder="התוכן המלא של ההתראה"
+                                    rows="3"
+                                    maxLength="200"
+                                />
+                                <small className="form-help">
+                                    {notificationForm.message.length}/200 תווים
+                                </small>
+                            </div>
+
+                            {/* Audience Selection */}
+                            <div className="form-group">
+                                <label>קהל יעד *</label>
+                                <div className="audience-options">
+                                    <label className="radio-option">
+                                        <input
+                                            type="radio"
+                                            name="audience"
+                                            value="all"
+                                            checked={notificationForm.audience === 'all'}
+                                            onChange={(e) => handleAudienceChange(e.target.value)}
+                                        />
+                                        <span className="radio-label">
+                                            🌐 כל המשתמשים
+                                        </span>
+                                    </label>
+                                    <label className="radio-option">
+                                        <input
+                                            type="radio"
+                                            name="audience"
+                                            value="specific_users"
+                                            checked={notificationForm.audience === 'specific_users'}
+                                            onChange={(e) => handleAudienceChange(e.target.value)}
+                                        />
+                                        <span className="radio-label">
+                                            👥 משתמשים נבחרים
+                                        </span>
+                                    </label>
+                                    <label className="radio-option">
+                                        <input
+                                            type="radio"
+                                            name="audience"
+                                            value="admins_only"
+                                            checked={notificationForm.audience === 'admins_only'}
+                                            onChange={(e) => handleAudienceChange(e.target.value)}
+                                        />
+                                        <span className="radio-label">
+                                            👑 מנהלים בלבד
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            {/* User Selection for Specific Users */}
+                            {notificationForm.audience === 'specific_users' && (
+                                <div className="form-group">
+                                    <label>בחר משתמשים</label>
+                                    {usersForNotificationLoading ? (
+                                        <div className="users-loading">
+                                            <span className="spinner-sm"></span>
+                                            <span>טוען משתמשים...</span>
+                                        </div>
+                                    ) : availableUsers.length > 0 ? (
+                                        <div className="users-selection">
+                                            {availableUsers.map((user) => (
+                                                <label key={user.id} className="user-checkbox">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={notificationForm.userIds.includes(user.id)}
+                                                        onChange={(e) => handleUserSelection(user.id, e.target.checked)}
+                                                    />
+                                                    <span className="user-info">
+                                                        <span className="user-name">{user.name}</span>
+                                                        <span className="user-email">{user.email}</span>
+                                                    </span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="users-loading" style={{color: '#ef4444'}}>
+                                            <span>❌</span>
+                                            <span>לא נמצאו משתמשים. אנא רענן את העמוד ונסה שוב.</span>
+                                        </div>
+                                    )}
+                                    <small className="form-help">
+                                        נבחרו {notificationForm.userIds.length} משתמשים
+                                    </small>
+                                </div>
+                            )}
+
+                            {/* Additional Options */}
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label htmlFor="notification_icon">אייקון (אופציונלי)</label>
+                                    <input
+                                        type="text"
+                                        id="notification_icon"
+                                        name="icon"
+                                        value={notificationForm.icon}
+                                        onChange={handleNotificationFormChange}
+                                        dir="ltr"
+                                        placeholder="🔔 או URL לתמונה"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="notification_url">קישור (אופציונלי)</label>
+                                    <input
+                                        type="url"
+                                        id="notification_url"
+                                        name="url"
+                                        value={notificationForm.url}
+                                        onChange={handleNotificationFormChange}
+                                        dir="ltr"
+                                        placeholder="/shop או https://..."
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Scheduled Sending */}
+                            <div className="form-group">
+                                <label htmlFor="notification_scheduled_at">תזמון שליחה (אופציונלי)</label>
+                                <input
+                                    type="datetime-local"
+                                    id="notification_scheduled_at"
+                                    name="scheduledAt"
+                                    value={notificationForm.scheduledAt}
+                                    onChange={handleNotificationFormChange}
+                                    min={new Date().toISOString().slice(0, 16)}
+                                />
+                                <small className="form-help">
+                                    השאר ריק לשליחה מיידית או בחר תאריך ושעה לשליחה מתוזמנת
+                                </small>
+                            </div>
+
+                            {/* Preview */}
+                            {(notificationForm.title || notificationForm.message) && (
+                                <div className="form-group">
+                                    <label>תצוגה מקדימה</label>
+                                    <div className="notification-preview">
+                                        <div className="preview-header">
+                                            <span className="preview-icon">
+                                                {notificationForm.icon || '🔔'}
+                                            </span>
+                                            <span className="preview-title">
+                                                {notificationForm.title || 'כותרת ההתראה'}
+                                            </span>
+                                        </div>
+                                        <div className="preview-body">
+                                            {notificationForm.message || 'תוכן ההתראה יופיע כאן...'}
+                                        </div>
+                                        <div className="preview-meta">
+                                            <span>וייפ שופ • כעת</span>
+                                            {notificationForm.audience === 'all' && ' • לכל המשתמשים'}
+                                            {notificationForm.audience === 'specific_users' && ` • ל-${notificationForm.userIds.length} משתמשים`}
+                                            {notificationForm.audience === 'admins_only' && ' • למנהלים בלבד'}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="admin-modal-actions">
+                                <button 
+                                    type="button"
+                                    className="admin-btn-secondary"
+                                    onClick={handleCloseNotificationModal}
+                                >
+                                    ביטול
+                                </button>
+                                <button 
+                                    type="submit"
+                                    className="admin-btn-primary"
+                                    disabled={sendNotificationLoading || !notificationForm.title || !notificationForm.message}
+                                >
+                                    {sendNotificationLoading ? (
+                                        <>
+                                            <span className="spinner-sm"></span>
+                                            שולח...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="ml-2">
+                                                {notificationForm.scheduledAt ? '⏰' : '🚀'}
+                                            </span>
+                                            {notificationForm.scheduledAt ? 'תזמן התראה' : 'שלח כעת'}
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         </form>
