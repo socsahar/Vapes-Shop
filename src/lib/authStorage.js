@@ -49,20 +49,34 @@ const medianGetItem = async (key) => {
     
     try {
         if (window.median && window.median.nativeStorage && window.median.nativeStorage.get) {
-            return new Promise((resolve) => {
+            return new Promise((resolve, reject) => {
+                // Add timeout to prevent hanging
+                const timeout = setTimeout(() => {
+                    console.warn('Median native storage timeout');
+                    resolve(null);
+                }, 1000);
+                
                 window.median.nativeStorage.get({
                     key: key,
                     callback: (value) => {
+                        clearTimeout(timeout);
                         console.log('✅ Retrieved from Median native storage:', key);
                         resolve(value);
                     }
                 });
             });
         } else if (window.gonative && window.gonative.nativeStorage && window.gonative.nativeStorage.get) {
-            return new Promise((resolve) => {
+            return new Promise((resolve, reject) => {
+                // Add timeout to prevent hanging
+                const timeout = setTimeout(() => {
+                    console.warn('GoNative storage timeout');
+                    resolve(null);
+                }, 1000);
+                
                 window.gonative.nativeStorage.get({
                     key: key,
                     callback: (value) => {
+                        clearTimeout(timeout);
                         console.log('✅ Retrieved from GoNative storage:', key);
                         resolve(value);
                     }

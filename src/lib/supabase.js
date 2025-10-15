@@ -60,10 +60,31 @@ export const supabaseAdmin = supabaseUrl ? createClient(
 ) : null
 
 // Helper function to get current user from persistent storage (client-side)
-// Now async to support Median native storage
+// Now async to support Median native storage, with synchronous fallback
 export const getCurrentUser = async () => {
   if (typeof window !== 'undefined') {
-    return await getUserSession();
+    try {
+      // Try async (Median native storage)
+      const user = await getUserSession();
+      if (user) return user;
+      
+      // Fallback to synchronous localStorage check
+      const localUser = localStorage.getItem('user');
+      if (localUser) {
+        return JSON.parse(localUser);
+      }
+    } catch (error) {
+      console.error('Error getting current user:', error);
+      // Emergency fallback to localStorage
+      try {
+        const localUser = localStorage.getItem('user');
+        if (localUser) {
+          return JSON.parse(localUser);
+        }
+      } catch (fallbackError) {
+        console.error('Fallback error:', fallbackError);
+      }
+    }
   }
   return null;
 }
