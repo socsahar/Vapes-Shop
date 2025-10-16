@@ -200,10 +200,18 @@ const deleteCookie = (name) => {
 export const storeUserSession = (user) => {
     if (typeof window === 'undefined') return;
 
+    // CRITICAL: Validate user object before storing
+    if (!user || !user.id) {
+        console.error('❌ CANNOT STORE SESSION: Invalid user object', user);
+        return;
+    }
+
     const userStr = JSON.stringify(user);
     
     console.log('🔄 STORING USER SESSION - START');
     console.log('   User ID:', user.id);
+    console.log('   Username:', user.username);
+    console.log('   Role:', user.role);
     console.log('   Is Median App?', isMedianApp());
     
     try {
@@ -286,9 +294,21 @@ export const getUserSession = async () => {
         if (localUser) {
             try {
                 const user = JSON.parse(localUser);
-                console.log('✅✅✅ USER SESSION FROM LOCALSTORAGE ✅✅✅');
-                console.log('   User ID:', user.id);
-                return user;
+                
+                // CRITICAL: Validate user has required fields
+                if (!user || !user.id) {
+                    console.error('❌ CORRUPTED DATA in localStorage - clearing');
+                    console.log('   Bad data:', user);
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('vape_shop_auth');
+                    localStorage.removeItem('vape_shop_user_id');
+                } else {
+                    console.log('✅✅✅ USER SESSION FROM LOCALSTORAGE ✅✅✅');
+                    console.log('   User ID:', user.id);
+                    console.log('   Username:', user.username);
+                    console.log('   Role:', user.role);
+                    return user;
+                }
             } catch (parseError) {
                 console.warn('⚠️ localStorage parse error, clearing invalid data');
                 localStorage.removeItem('user');
@@ -301,12 +321,22 @@ export const getUserSession = async () => {
         if (cookieUser) {
             try {
                 const user = JSON.parse(cookieUser);
-                localStorage.setItem('user', cookieUser);
-                console.log('✅✅✅ USER SESSION FROM COOKIE ✅✅✅');
-                console.log('   User ID:', user.id);
-                return user;
+                
+                // CRITICAL: Validate user has required fields
+                if (!user || !user.id) {
+                    console.error('❌ CORRUPTED DATA in cookie - clearing');
+                    deleteCookie('vape_shop_user');
+                } else {
+                    localStorage.setItem('user', cookieUser);
+                    console.log('✅✅✅ USER SESSION FROM COOKIE ✅✅✅');
+                    console.log('   User ID:', user.id);
+                    console.log('   Username:', user.username);
+                    console.log('   Role:', user.role);
+                    return user;
+                }
             } catch (parseError) {
                 console.warn('⚠️ Cookie parse error');
+                deleteCookie('vape_shop_user');
             }
         }
 
