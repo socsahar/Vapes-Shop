@@ -67,12 +67,11 @@ class OneSignalService {
             ...targetingConfig,
 
             // URL to open when notification is clicked
-            url: url || undefined,
+            ...(url ? { url } : {}),
             
             // Images
-            small_icon: icon || undefined,
-            large_icon: icon || undefined,
-            big_picture: image || undefined,
+            ...(icon ? { small_icon: icon, large_icon: icon } : {}),
+            ...(image ? { big_picture: image } : {}),
 
             // Android specific - CRITICAL FOR NOTIFICATIONS TO SHOW AND SOUND
             android_accent_color: '8B5CF6FF', // Purple color (must include alpha)
@@ -81,8 +80,6 @@ class OneSignalService {
             android_led_color: '8B5CF6FF', // LED color
             priority: 10, // ⚠️ High priority (immediate popup)
             android_channel_id: 'default', // ⚠️ Use default channel
-            existing_android_channel_id: 'default', // ⚠️ Existing channel
-            collapse_id: undefined, // Don't collapse notifications
             
             // Delivery settings
             ttl: 259200, // 3 days expiry
@@ -93,11 +90,9 @@ class OneSignalService {
             ios_badgeType: 'Increase',
             ios_badgeCount: 1,
             ios_sound: 'default', // ⚠️ Enable sound for iOS
-            ios_category: 'default',
             
-            // Behavior
-            delayed_option: 'immediate', // ⚠️ Send immediately, no delays
-            send_after: scheduledAt ? new Date(scheduledAt).toISOString() : undefined
+            // Schedule if needed
+            ...(scheduledAt ? { send_after: new Date(scheduledAt).toISOString() } : {})
         };
 
         try {
