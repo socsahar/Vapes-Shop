@@ -74,22 +74,30 @@ class OneSignalService {
             large_icon: icon || undefined,
             big_picture: image || undefined,
 
-            // Android specific - CRITICAL FOR NOTIFICATIONS TO SHOW
-            android_accent_color: '8B5CF6', // Purple color for your brand
-            android_visibility: 1, // Public
-            android_sound: 'default', // Enable sound
+            // Android specific - CRITICAL FOR NOTIFICATIONS TO SHOW AND SOUND
+            android_accent_color: '8B5CF6FF', // Purple color (must include alpha)
+            android_visibility: 1, // Public (show on lock screen)
+            android_sound: 'default', // ⚠️ Enable sound
             android_led_color: '8B5CF6FF', // LED color
-            priority: 10, // High priority (makes notification show immediately)
+            priority: 10, // ⚠️ High priority (immediate popup)
+            android_channel_id: 'default', // ⚠️ Use default channel
+            existing_android_channel_id: 'default', // ⚠️ Existing channel
+            collapse_id: undefined, // Don't collapse notifications
+            
+            // Delivery settings
+            ttl: 259200, // 3 days expiry
+            content_available: true, // Wake app on delivery
+            mutable_content: true, // Allow modification
             
             // iOS specific  
             ios_badgeType: 'Increase',
             ios_badgeCount: 1,
-            ios_sound: 'default', // Enable sound for iOS
-
-            // Schedule if needed
-            ...(scheduledAt ? {
-                send_after: new Date(scheduledAt).toISOString()
-            } : {})
+            ios_sound: 'default', // ⚠️ Enable sound for iOS
+            ios_category: 'default',
+            
+            // Behavior
+            delayed_option: 'immediate', // ⚠️ Send immediately, no delays
+            send_after: scheduledAt ? new Date(scheduledAt).toISOString() : undefined
         };
 
         try {

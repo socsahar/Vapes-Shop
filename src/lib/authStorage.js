@@ -202,28 +202,41 @@ export const storeUserSession = (user) => {
 
     const userStr = JSON.stringify(user);
     
+    console.log('🔄 STORING USER SESSION - START');
+    console.log('   User ID:', user.id);
+    console.log('   Is Median App?', isMedianApp());
+    
     try {
-        // 1. If in Median app, use native storage (MOST PERSISTENT)
-        if (isMedianApp()) {
-            medianSetItem('vape_shop_user', userStr);
-            medianSetItem('vape_shop_auth', 'true');
-            medianSetItem('vape_shop_user_id', user.id);
-            medianSetItem('vape_shop_auth_time', Date.now().toString());
-            console.log('✅ User session stored in Median native storage');
-        }
-        
-        // 2. Store in cookie (web fallback)
-        setCookie('vape_shop_user', userStr, 365);
-        
-        // 3. Store in localStorage (backup)
+        // 1. ALWAYS store in localStorage first (immediate, guaranteed)
         localStorage.setItem('user', userStr);
         localStorage.setItem('vape_shop_auth', 'true');
         localStorage.setItem('vape_shop_user_id', user.id);
         localStorage.setItem('vape_shop_auth_time', Date.now().toString());
+        console.log('✅ STORED in localStorage');
         
-        console.log('✅ User session stored successfully (all methods)');
+        // 2. ALWAYS store in cookie (immediate, guaranteed)
+        setCookie('vape_shop_user', userStr, 365);
+        console.log('✅ STORED in cookie');
+        
+        // 3. Try Median App Storage (if available)
+        if (isMedianApp()) {
+            const medianStored = medianSetItem('vape_shop_user', userStr);
+            const authStored = medianSetItem('vape_shop_auth', 'true');
+            const idStored = medianSetItem('vape_shop_user_id', user.id);
+            const timeStored = medianSetItem('vape_shop_auth_time', Date.now().toString());
+            
+            if (medianStored && authStored && idStored && timeStored) {
+                console.log('✅ STORED in Median App Storage');
+            } else {
+                console.warn('⚠️ PARTIAL Median storage (some items failed)');
+            }
+        } else {
+            console.log('ℹ️ Not a Median app - skipping native storage');
+        }
+        
+        console.log('✅✅✅ USER SESSION STORED SUCCESSFULLY ✅✅✅');
     } catch (error) {
-        console.error('Error storing user session:', error);
+        console.error('❌ Error storing user session:', error);
     }
 };
 
@@ -263,13 +276,18 @@ export const getUserSessionSync = () => {
 export const getUserSession = async () => {
     if (typeof window === 'undefined') return null;
 
+    console.log('🔍 RETRIEVING USER SESSION - START');
+    console.log('   Is Median App?', isMedianApp());
+
     try {
         // 1. ALWAYS check localStorage first (instant, never fails)
         const localUser = localStorage.getItem('user');
+        console.log('   localStorage:', localUser ? '✅ FOUND' : '❌ EMPTY');
         if (localUser) {
             try {
                 const user = JSON.parse(localUser);
-                console.log('✅ User session from localStorage');
+                console.log('✅✅✅ USER SESSION FROM LOCALSTORAGE ✅✅✅');
+                console.log('   User ID:', user.id);
                 return user;
             } catch (parseError) {
                 console.warn('⚠️ localStorage parse error, clearing invalid data');
@@ -279,11 +297,13 @@ export const getUserSession = async () => {
 
         // 2. ALWAYS check cookie second (instant, never fails)
         const cookieUser = getCookie('vape_shop_user');
+        console.log('   Cookie:', cookieUser ? '✅ FOUND' : '❌ EMPTY');
         if (cookieUser) {
             try {
                 const user = JSON.parse(cookieUser);
                 localStorage.setItem('user', cookieUser);
-                console.log('✅ User session from cookie');
+                console.log('✅✅✅ USER SESSION FROM COOKIE ✅✅✅');
+                console.log('   User ID:', user.id);
                 return user;
             } catch (parseError) {
                 console.warn('⚠️ Cookie parse error');
@@ -291,32 +311,39 @@ export const getUserSession = async () => {
         }
 
         // 3. ONLY try Median if we have nothing else (with aggressive timeout)
-        // This runs in background and won't block the function
+        console.log('   Checking Median App Storage...');
         if (isMedianApp()) {
             try {
-                // CRITICAL: Hard 500ms timeout - if Median doesn't respond, give up
+                // CRITICAL: Hard 1000ms timeout - if Median doesn't respond, give up
                 const medianPromise = medianGetItem('vape_shop_user');
                 const timeoutPromise = new Promise((resolve) => {
                     setTimeout(() => {
-                        console.warn('⏱️ Median timeout - skipping');
+                        console.warn('⏱️ Median timeout (1000ms) - skipping');
                         resolve(null);
-                    }, 500);
+                    }, 1000);
                 });
                 
                 const medianUser = await Promise.race([medianPromise, timeoutPromise]);
+                console.log('   Median result:', medianUser ? '✅ FOUND' : '❌ EMPTY');
                 
                 if (medianUser) {
                     const user = JSON.parse(medianUser);
+                    // Restore to localStorage and cookie for faster future access
                     localStorage.setItem('user', medianUser);
-                    console.log('✅ User session from Median (late restore)');
+                    setCookie('vape_shop_user', medianUser, 365);
+                    console.log('✅✅✅ USER SESSION FROM MEDIAN (RESTORED) ✅✅✅');
+                    console.log('   User ID:', user.id);
+                    console.log('   Also restored to localStorage & cookie');
                     return user;
                 }
             } catch (medianError) {
                 console.warn('⚠️ Median check failed:', medianError.message || medianError);
             }
+        } else {
+            console.log('   Not a Median app - skipping');
         }
 
-        console.log('ℹ️ No user session found');
+        console.log('❌❌❌ NO USER SESSION FOUND ❌❌❌');
         return null;
         
     } catch (error) {
