@@ -73,13 +73,13 @@ class OneSignalService {
             ...(icon ? { small_icon: icon, large_icon: icon } : {}),
             ...(image ? { big_picture: image } : {}),
 
-            // Android specific - CRITICAL FOR NOTIFICATIONS TO SHOW AND SOUND
+            // Android specific - Sound and visual settings
             android_accent_color: '8B5CF6FF', // Purple color (must include alpha)
             android_visibility: 1, // Public (show on lock screen)
-            android_sound: 'default', // ⚠️ Enable sound
+            android_sound: 'default', // Enable sound
             android_led_color: '8B5CF6FF', // LED color
-            priority: 10, // ⚠️ High priority (immediate popup)
-            android_channel_id: 'default', // ⚠️ Use default channel
+            priority: 10, // High priority (immediate popup)
+            // NOTE: android_channel_id removed - OneSignal uses its default channel
             
             // Delivery settings
             ttl: 259200, // 3 days expiry
@@ -89,7 +89,7 @@ class OneSignalService {
             // iOS specific  
             ios_badgeType: 'Increase',
             ios_badgeCount: 1,
-            ios_sound: 'default', // ⚠️ Enable sound for iOS
+            ios_sound: 'default', // Enable sound for iOS
             
             // Schedule if needed
             ...(scheduledAt ? { send_after: new Date(scheduledAt).toISOString() } : {})
