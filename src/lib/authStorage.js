@@ -167,6 +167,34 @@ export const storeUserSession = (user) => {
 };
 
 /**
+ * Synchronous version - for immediate access (web only)
+ */
+export const getUserSessionSync = () => {
+    if (typeof window === 'undefined') return null;
+
+    try {
+        // 1. Try localStorage first (fastest)
+        const localUser = localStorage.getItem('user');
+        if (localUser) {
+            return JSON.parse(localUser);
+        }
+
+        // 2. Try cookie
+        const cookieUser = getCookie('vape_shop_user');
+        if (cookieUser) {
+            const user = JSON.parse(cookieUser);
+            localStorage.setItem('user', cookieUser);
+            return user;
+        }
+
+        return null;
+    } catch (error) {
+        console.error('Error retrieving user session (sync):', error);
+        return null;
+    }
+};
+
+/**
  * Retrieve user session from storage
  * Checks Median native storage first, then falls back to localStorage/cookies
  */
@@ -174,7 +202,13 @@ export const getUserSession = async () => {
     if (typeof window === 'undefined') return null;
 
     try {
-        // 1. If in Median app, try native storage first (MOST PERSISTENT)
+        // Quick sync check first (don't wait for Median if we already have localStorage)
+        const quickUser = getUserSessionSync();
+        if (quickUser && !isMedianApp()) {
+            return quickUser; // Return immediately for web users
+        }
+
+        // 1. If in Median app, try native storage (MOST PERSISTENT)
         if (isMedianApp()) {
             const medianUser = await medianGetItem('vape_shop_user');
             if (medianUser) {
@@ -311,6 +345,7 @@ if (typeof window !== 'undefined') {
 export default {
     storeUserSession,
     getUserSession,
+    getUserSessionSync,
     isAuthenticated,
     clearUserSession,
     isSessionExpired,
