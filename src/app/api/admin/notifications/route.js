@@ -66,17 +66,36 @@ class NotificationService {
 
                     console.log('OneSignal response:', oneSignalResponse);
 
-                    // Update database with sent count
-                    if (oneSignalResponse.recipients) {
+                    // Persist OneSignal id immediately
+                    if (oneSignalResponse && oneSignalResponse.id) {
                         await supabase
                             .from('push_notifications')
-                            .update({ 
-                                sent_count: oneSignalResponse.recipients,
-                                onesignal_id: oneSignalResponse.id 
-                            })
+                            .update({ onesignal_id: oneSignalResponse.id })
                             .eq('id', insertedNotification.id);
-                        
-                        insertedNotification.sent_count = oneSignalResponse.recipients;
+                        insertedNotification.onesignal_id = oneSignalResponse.id;
+                    }
+
+                    // Try to fetch delivery/click stats from OneSignal and update DB
+                    try {
+                        if (oneSignalResponse && oneSignalResponse.id) {
+                            const stats = await oneSignal.getNotificationStats(oneSignalResponse.id);
+                            if (stats) {
+                                await supabase
+                                    .from('push_notifications')
+                                    .update({ 
+                                        sent_count: stats.sent || 0,
+                                        delivered_count: stats.delivered || 0,
+                                        clicked_count: stats.clicked || 0
+                                    })
+                                    .eq('id', insertedNotification.id);
+
+                                insertedNotification.sent_count = stats.sent || 0;
+                                insertedNotification.delivered_count = stats.delivered || 0;
+                                insertedNotification.clicked_count = stats.clicked || 0;
+                            }
+                        }
+                    } catch (statsError) {
+                        console.warn('Could not fetch OneSignal stats immediately:', statsError);
                     }
                 } catch (pushError) {
                     console.error('OneSignal error:', pushError);

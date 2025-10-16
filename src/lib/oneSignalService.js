@@ -40,10 +40,11 @@ class OneSignalService {
         } = notification;
 
         // For 'all' audience, get player IDs directly from OneSignal API
+        // This bypasses segment issues and sends directly to all subscribed devices
         let targetingConfig = {};
         if (audience === 'all') {
             const playerIds = await this.getAllPlayerIds();
-            console.log(`Found ${playerIds.length} subscribed players`);
+            console.log(`✅ Found ${playerIds.length} subscribed players to send to`);
             if (playerIds.length > 0) {
                 targetingConfig = { include_player_ids: playerIds };
             } else {
@@ -189,22 +190,33 @@ class OneSignalService {
      */
     async getNotificationStats(notificationId) {
         try {
+            // Support both v1 and v2 API key formats (v2 uses Bearer)
+            const isV2Key = this.apiKey && this.apiKey.startsWith && this.apiKey.startsWith('os_v2_');
+
             const response = await fetch(
                 `${this.apiUrl}/notifications/${notificationId}?app_id=${this.appId}`,
                 {
                     headers: {
-                        'Authorization': `Basic ${this.apiKey}`
+                        'Content-Type': 'application/json',
+                        'Authorization': isV2Key ? `Bearer ${this.apiKey}` : `Basic ${this.apiKey}`
                     }
                 }
             );
 
             const result = await response.json();
-            
+
+            // OneSignal may return different field names depending on API version.
+            // Try to extract the best-known metrics and normalize them.
+            const sent = (result.recipients != null) ? result.recipients : (result.successful != null ? result.successful : 0);
+            const delivered = (result.delivered != null) ? result.delivered : (result.successful != null ? result.successful : 0);
+            // 'converted' is commonly used as clicks/conversions in OneSignal responses
+            const clicked = (result.converted != null) ? result.converted : (result.clicked != null ? result.clicked : 0);
+
             return {
-                sent: result.successful || 0,
-                failed: result.failed || 0,
-                converted: result.converted || 0,
-                remaining: result.remaining || 0
+                sent: sent || 0,
+                delivered: delivered || 0,
+                clicked: clicked || 0,
+                raw: result
             };
         } catch (error) {
             console.error('Failed to get notification stats:', error);

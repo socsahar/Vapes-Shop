@@ -1245,12 +1245,59 @@ export default function AdminPage() {
         fetchUsersForNotifications();
     };
 
+    const replacePlaceholders = (text) => {
+        if (!text) return text;
+        
+        // Calculate actual time left from active general orders
+        let timeLeft = '24 שעות';
+        if (generalOrders && generalOrders.length > 0) {
+            const activeOrder = generalOrders.find(order => order.status === 'active');
+            if (activeOrder && activeOrder.deadline) {
+                const deadline = new Date(activeOrder.deadline);
+                const now = new Date();
+                const diffMs = deadline - now;
+                const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                const diffDays = Math.floor(diffHours / 24);
+                
+                if (diffDays > 0) {
+                    timeLeft = `${diffDays} ימים`;
+                } else if (diffHours > 0) {
+                    timeLeft = `${diffHours} שעות`;
+                } else {
+                    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+                    timeLeft = `${diffMinutes} דקות`;
+                }
+            }
+        }
+        
+        // Replace {shop_name} with actual shop name
+        const shopName = 'Vape Shop Israel';
+        
+        // Replace {product_name} with dynamic product (get latest product)
+        const productName = products && products.length > 0 
+            ? products[0].name 
+            : 'מוצר חדש';
+        
+        // Replace {order_title} with active order title
+        const orderTitle = generalOrders && generalOrders.length > 0
+            ? generalOrders.find(o => o.status === 'active')?.title || 'הזמנה קבוצתית'
+            : 'הזמנה קבוצתית';
+        
+        return text
+            .replace(/\{time_left\}/g, timeLeft)
+            .replace(/\{shop_name\}/g, shopName)
+            .replace(/\{product_name\}/g, productName)
+            .replace(/\{order_title\}/g, orderTitle)
+            .replace(/\{user_name\}/g, user?.full_name || 'משתמש')
+            .replace(/\{order_number\}/g, '#12345');
+    };
+
     const handleSelectTemplate = (template) => {
         setSelectedTemplate(template);
         setNotificationForm(prev => ({
             ...prev,
-            title: template.title,
-            message: template.body,
+            title: replacePlaceholders(template.title),
+            message: replacePlaceholders(template.body),
             icon: template.icon,
             url: template.url,
             template: template.id
