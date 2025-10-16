@@ -205,51 +205,26 @@ export const getUserSessionSync = () => {
 
 /**
  * Retrieve user session from storage
- * Checks Median native storage first, then falls back to localStorage/cookies
+ * SIMPLE VERSION - Just use localStorage/cookies, skip Median for now
  */
 export const getUserSession = async () => {
     if (typeof window === 'undefined') return null;
 
     try {
-        // Quick sync check first (don't wait for Median if we already have localStorage)
-        const quickUser = getUserSessionSync();
-        if (quickUser && !isMedianApp()) {
-            return quickUser; // Return immediately for web users
-        }
-
-        // 1. If in Median app, try native storage (MOST PERSISTENT)
-        if (isMedianApp()) {
-            const medianUser = await medianGetItem('vape_shop_user');
-            if (medianUser) {
-                try {
-                    const user = JSON.parse(medianUser);
-                    // Sync to localStorage for faster access
-                    localStorage.setItem('user', medianUser);
-                    console.log('✅ User session restored from Median native storage');
-                    return user;
-                } catch (parseError) {
-                    console.error('Error parsing Median user data:', parseError);
-                }
-            }
-        }
-
-        // 2. Try cookie (web fallback)
-        const cookieUser = getCookie('vape_shop_user');
-        if (cookieUser) {
-            const user = JSON.parse(cookieUser);
-            // Sync to localStorage
-            localStorage.setItem('user', cookieUser);
-            console.log('✅ User session restored from cookie');
-            return user;
-        }
-
-        // 3. Fallback to localStorage
+        // 1. Try localStorage first (fastest and most reliable)
         const localUser = localStorage.getItem('user');
         if (localUser) {
             const user = JSON.parse(localUser);
-            // Sync to cookie for future
-            setCookie('vape_shop_user', localUser, 365);
             console.log('✅ User session restored from localStorage');
+            return user;
+        }
+
+        // 2. Try cookie as fallback
+        const cookieUser = getCookie('vape_shop_user');
+        if (cookieUser) {
+            const user = JSON.parse(cookieUser);
+            localStorage.setItem('user', cookieUser);
+            console.log('✅ User session restored from cookie');
             return user;
         }
 
@@ -259,7 +234,7 @@ export const getUserSession = async () => {
         console.error('Error retrieving user session:', error);
         return null;
     }
-};
+}
 
 /**
  * Check if user is authenticated
