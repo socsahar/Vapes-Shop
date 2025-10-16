@@ -20,6 +20,7 @@ const isMedianApp = () => {
         hasMedian,
         hasGoNative,
         hasMedianUA,
+        hasNativeDatastore: hasMedian && window.median.nativeDatastore !== undefined,
         hasNativeStorage: hasMedian && window.median.nativeStorage !== undefined,
         userAgent: navigator.userAgent
     });
@@ -27,28 +28,39 @@ const isMedianApp = () => {
     return hasMedian || hasGoNative || hasMedianUA;
 };
 
-// Median native storage helpers
+// Median native datastore helpers
 const medianSetItem = (key, value) => {
     if (typeof window === 'undefined') return false;
     
     try {
-        if (window.median && window.median.nativeStorage && window.median.nativeStorage.set) {
+        // Try nativeDatastore first (new API name)
+        if (window.median && window.median.nativeDatastore && window.median.nativeDatastore.setItem) {
+            window.median.nativeDatastore.setItem(key, value);
+            console.log('✅ Stored in Median native datastore:', key);
+            return true;
+        } else if (window.gonative && window.gonative.nativeDatastore && window.gonative.nativeDatastore.setItem) {
+            window.gonative.nativeDatastore.setItem(key, value);
+            console.log('✅ Stored in GoNative datastore:', key);
+            return true;
+        }
+        // Fallback to old nativeStorage API
+        else if (window.median && window.median.nativeStorage && window.median.nativeStorage.set) {
             window.median.nativeStorage.set({
                 key: key,
                 value: value
             });
-            console.log('✅ Stored in Median native storage:', key);
+            console.log('✅ Stored in Median native storage (legacy):', key);
             return true;
         } else if (window.gonative && window.gonative.nativeStorage && window.gonative.nativeStorage.set) {
             window.gonative.nativeStorage.set({
                 key: key,
                 value: value
             });
-            console.log('✅ Stored in GoNative storage:', key);
+            console.log('✅ Stored in GoNative storage (legacy):', key);
             return true;
         }
     } catch (error) {
-        console.error('Error storing in Median native storage:', error);
+        console.error('Error storing in Median native datastore:', error);
     }
     return false;
 };
@@ -57,7 +69,18 @@ const medianGetItem = async (key) => {
     if (typeof window === 'undefined') return null;
     
     try {
-        if (window.median && window.median.nativeStorage && window.median.nativeStorage.get) {
+        // Try nativeDatastore first (new API - synchronous)
+        if (window.median && window.median.nativeDatastore && window.median.nativeDatastore.getItem) {
+            const value = window.median.nativeDatastore.getItem(key);
+            console.log('✅ Retrieved from Median native datastore:', key, value ? 'found' : 'not found');
+            return value;
+        } else if (window.gonative && window.gonative.nativeDatastore && window.gonative.nativeDatastore.getItem) {
+            const value = window.gonative.nativeDatastore.getItem(key);
+            console.log('✅ Retrieved from GoNative datastore:', key, value ? 'found' : 'not found');
+            return value;
+        }
+        // Fallback to old nativeStorage API (async)
+        else if (window.median && window.median.nativeStorage && window.median.nativeStorage.get) {
             return new Promise((resolve, reject) => {
                 // Add timeout to prevent hanging
                 const timeout = setTimeout(() => {
@@ -69,7 +92,7 @@ const medianGetItem = async (key) => {
                     key: key,
                     callback: (value) => {
                         clearTimeout(timeout);
-                        console.log('✅ Retrieved from Median native storage:', key);
+                        console.log('✅ Retrieved from Median native storage (legacy):', key);
                         resolve(value);
                     }
                 });
@@ -86,14 +109,14 @@ const medianGetItem = async (key) => {
                     key: key,
                     callback: (value) => {
                         clearTimeout(timeout);
-                        console.log('✅ Retrieved from GoNative storage:', key);
+                        console.log('✅ Retrieved from GoNative storage (legacy):', key);
                         resolve(value);
                     }
                 });
             });
         }
     } catch (error) {
-        console.error('Error retrieving from Median native storage:', error);
+        console.error('Error retrieving from Median native datastore:', error);
     }
     return null;
 };
@@ -102,9 +125,20 @@ const medianDeleteItem = (key) => {
     if (typeof window === 'undefined') return false;
     
     try {
-        if (window.median && window.median.nativeStorage && window.median.nativeStorage.remove) {
+        // Try nativeDatastore first (new API)
+        if (window.median && window.median.nativeDatastore && window.median.nativeDatastore.removeItem) {
+            window.median.nativeDatastore.removeItem(key);
+            console.log('✅ Removed from Median native datastore:', key);
+            return true;
+        } else if (window.gonative && window.gonative.nativeDatastore && window.gonative.nativeDatastore.removeItem) {
+            window.gonative.nativeDatastore.removeItem(key);
+            console.log('✅ Removed from GoNative datastore:', key);
+            return true;
+        }
+        // Fallback to old nativeStorage API
+        else if (window.median && window.median.nativeStorage && window.median.nativeStorage.remove) {
             window.median.nativeStorage.remove({ key: key });
-            console.log('✅ Removed from Median native storage:', key);
+            console.log('✅ Removed from Median native storage (legacy):', key);
             return true;
         } else if (window.gonative && window.gonative.nativeStorage && window.gonative.nativeStorage.remove) {
             window.gonative.nativeStorage.remove({ key: key });
