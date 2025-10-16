@@ -15,52 +15,55 @@ const isMedianApp = () => {
     const hasMedian = window.median !== undefined;
     const hasGoNative = window.gonative !== undefined;
     const hasMedianUA = navigator.userAgent.includes('gonative') || navigator.userAgent.includes('median');
+    const hasAppStorage = hasMedian && window.median.storage && window.median.storage.app;
     
     console.log('🔍 Median Detection:', {
         hasMedian,
         hasGoNative,
         hasMedianUA,
-        hasNativeDatastore: hasMedian && window.median.nativeDatastore !== undefined,
-        hasNativeStorage: hasMedian && window.median.nativeStorage !== undefined,
+        hasAppStorage,
+        hasCloudStorage: hasMedian && window.median.storage && window.median.storage.cloud,
         userAgent: navigator.userAgent
     });
     
     return hasMedian || hasGoNative || hasMedianUA;
 };
 
-// Median native datastore helpers
+// Median native datastore helpers (using official API)
 const medianSetItem = (key, value) => {
     if (typeof window === 'undefined') return false;
     
     try {
-        // Try nativeDatastore first (new API name)
-        if (window.median && window.median.nativeDatastore && window.median.nativeDatastore.setItem) {
-            window.median.nativeDatastore.setItem(key, value);
-            console.log('✅ Stored in Median native datastore:', key);
-            return true;
-        } else if (window.gonative && window.gonative.nativeDatastore && window.gonative.nativeDatastore.setItem) {
-            window.gonative.nativeDatastore.setItem(key, value);
-            console.log('✅ Stored in GoNative datastore:', key);
+        // Use median.storage.app API (official Native Datastore plugin)
+        if (window.median && window.median.storage && window.median.storage.app) {
+            window.median.storage.app.set({
+                key: key,
+                value: value,
+                statuscallback: (result) => {
+                    if (result.status === 'success') {
+                        console.log('✅ Stored in Median App Storage:', key);
+                    } else {
+                        console.error('❌ Median storage error:', result.status);
+                    }
+                }
+            });
             return true;
         }
-        // Fallback to old nativeStorage API
-        else if (window.median && window.median.nativeStorage && window.median.nativeStorage.set) {
-            window.median.nativeStorage.set({
+        // Fallback for GoNative (older branding)
+        else if (window.gonative && window.gonative.storage && window.gonative.storage.app) {
+            window.gonative.storage.app.set({
                 key: key,
-                value: value
+                value: value,
+                statuscallback: (result) => {
+                    if (result.status === 'success') {
+                        console.log('✅ Stored in GoNative App Storage:', key);
+                    }
+                }
             });
-            console.log('✅ Stored in Median native storage (legacy):', key);
-            return true;
-        } else if (window.gonative && window.gonative.nativeStorage && window.gonative.nativeStorage.set) {
-            window.gonative.nativeStorage.set({
-                key: key,
-                value: value
-            });
-            console.log('✅ Stored in GoNative storage (legacy):', key);
             return true;
         }
     } catch (error) {
-        console.error('Error storing in Median native datastore:', error);
+        console.error('Error storing in Median App Storage:', error);
     }
     return false;
 };
@@ -69,54 +72,63 @@ const medianGetItem = async (key) => {
     if (typeof window === 'undefined') return null;
     
     try {
-        // Try nativeDatastore first (new API - synchronous)
-        if (window.median && window.median.nativeDatastore && window.median.nativeDatastore.getItem) {
-            const value = window.median.nativeDatastore.getItem(key);
-            console.log('✅ Retrieved from Median native datastore:', key, value ? 'found' : 'not found');
-            return value;
-        } else if (window.gonative && window.gonative.nativeDatastore && window.gonative.nativeDatastore.getItem) {
-            const value = window.gonative.nativeDatastore.getItem(key);
-            console.log('✅ Retrieved from GoNative datastore:', key, value ? 'found' : 'not found');
-            return value;
-        }
-        // Fallback to old nativeStorage API (async)
-        else if (window.median && window.median.nativeStorage && window.median.nativeStorage.get) {
-            return new Promise((resolve, reject) => {
+        // Use median.storage.app API with Promise support
+        if (window.median && window.median.storage && window.median.storage.app && window.median.storage.app.get) {
+            return new Promise((resolve) => {
                 // Add timeout to prevent hanging
                 const timeout = setTimeout(() => {
-                    console.warn('Median native storage timeout');
+                    console.warn('⏱️ Median App Storage timeout for key:', key);
                     resolve(null);
-                }, 1000);
+                }, 2000);
                 
-                window.median.nativeStorage.get({
-                    key: key,
-                    callback: (value) => {
+                // Try Promise method first (preferred)
+                window.median.storage.app.get({ key: key })
+                    .then((result) => {
                         clearTimeout(timeout);
-                        console.log('✅ Retrieved from Median native storage (legacy):', key);
-                        resolve(value);
-                    }
-                });
+                        if (result.data) {
+                            console.log('✅ Retrieved from Median App Storage:', key);
+                            resolve(result.data);
+                        } else if (result.status === 'preference-not-found') {
+                            console.log('ℹ️ Key not found in Median App Storage:', key);
+                            resolve(null);
+                        } else {
+                            console.log('ℹ️ No data in Median App Storage for:', key, result.status);
+                            resolve(null);
+                        }
+                    })
+                    .catch((error) => {
+                        clearTimeout(timeout);
+                        console.error('❌ Median App Storage get error:', error);
+                        resolve(null);
+                    });
             });
-        } else if (window.gonative && window.gonative.nativeStorage && window.gonative.nativeStorage.get) {
-            return new Promise((resolve, reject) => {
-                // Add timeout to prevent hanging
+        }
+        // Fallback for GoNative
+        else if (window.gonative && window.gonative.storage && window.gonative.storage.app && window.gonative.storage.app.get) {
+            return new Promise((resolve) => {
                 const timeout = setTimeout(() => {
-                    console.warn('GoNative storage timeout');
+                    console.warn('⏱️ GoNative App Storage timeout for key:', key);
                     resolve(null);
-                }, 1000);
+                }, 2000);
                 
-                window.gonative.nativeStorage.get({
-                    key: key,
-                    callback: (value) => {
+                window.gonative.storage.app.get({ key: key })
+                    .then((result) => {
                         clearTimeout(timeout);
-                        console.log('✅ Retrieved from GoNative storage (legacy):', key);
-                        resolve(value);
-                    }
-                });
+                        if (result.data) {
+                            console.log('✅ Retrieved from GoNative App Storage:', key);
+                            resolve(result.data);
+                        } else {
+                            resolve(null);
+                        }
+                    })
+                    .catch(() => {
+                        clearTimeout(timeout);
+                        resolve(null);
+                    });
             });
         }
     } catch (error) {
-        console.error('Error retrieving from Median native datastore:', error);
+        console.error('Error retrieving from Median App Storage:', error);
     }
     return null;
 };
@@ -125,28 +137,34 @@ const medianDeleteItem = (key) => {
     if (typeof window === 'undefined') return false;
     
     try {
-        // Try nativeDatastore first (new API)
-        if (window.median && window.median.nativeDatastore && window.median.nativeDatastore.removeItem) {
-            window.median.nativeDatastore.removeItem(key);
-            console.log('✅ Removed from Median native datastore:', key);
-            return true;
-        } else if (window.gonative && window.gonative.nativeDatastore && window.gonative.nativeDatastore.removeItem) {
-            window.gonative.nativeDatastore.removeItem(key);
-            console.log('✅ Removed from GoNative datastore:', key);
+        // Use median.storage.app.delete API
+        if (window.median && window.median.storage && window.median.storage.app && window.median.storage.app.delete) {
+            window.median.storage.app.delete({
+                key: key,
+                statuscallback: (result) => {
+                    if (result.status === 'success') {
+                        console.log('✅ Deleted from Median App Storage:', key);
+                    } else {
+                        console.log('ℹ️ Median delete status:', result.status);
+                    }
+                }
+            });
             return true;
         }
-        // Fallback to old nativeStorage API
-        else if (window.median && window.median.nativeStorage && window.median.nativeStorage.remove) {
-            window.median.nativeStorage.remove({ key: key });
-            console.log('✅ Removed from Median native storage (legacy):', key);
-            return true;
-        } else if (window.gonative && window.gonative.nativeStorage && window.gonative.nativeStorage.remove) {
-            window.gonative.nativeStorage.remove({ key: key });
-            console.log('✅ Removed from GoNative storage:', key);
+        // Fallback for GoNative
+        else if (window.gonative && window.gonative.storage && window.gonative.storage.app && window.gonative.storage.app.delete) {
+            window.gonative.storage.app.delete({
+                key: key,
+                statuscallback: (result) => {
+                    if (result.status === 'success') {
+                        console.log('✅ Deleted from GoNative App Storage:', key);
+                    }
+                }
+            });
             return true;
         }
     } catch (error) {
-        console.error('Error removing from Median native storage:', error);
+        console.error('Error deleting from Median App Storage:', error);
     }
     return false;
 };
