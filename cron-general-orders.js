@@ -25,8 +25,95 @@ const supabase = createClient(
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID;
+const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY;
 
 console.log(`🤖 [${new Date().toISOString()}] Starting General Order Automation Cron with Activity Logging...`);
+
+// Helper function to send push notifications
+async function sendPushNotification(title, body, orderData = {}) {
+  if (!ONESIGNAL_APP_ID || !ONESIGNAL_REST_API_KEY) {
+    console.log('⚠️ OneSignal not configured - skipping push notification');
+    return { success: false, reason: 'not_configured' };
+  }
+
+  try {
+    console.log(`📱 Sending push notification: ${title}`);
+    
+    // Get all subscribed player IDs from OneSignal
+    const isV2Key = ONESIGNAL_REST_API_KEY.startsWith('os_v2_');
+    const playersResponse = await fetch(
+      `https://onesignal.com/api/v1/players?app_id=${ONESIGNAL_APP_ID}&limit=300`,
+      {
+        headers: {
+          'Authorization': isV2Key ? `Bearer ${ONESIGNAL_REST_API_KEY}` : `Basic ${ONESIGNAL_REST_API_KEY}`
+        }
+      }
+    );
+
+    const playersResult = await playersResponse.json();
+    const subscribedPlayers = playersResult.players?.filter(p => 
+      p.invalid_identifier === false && p.notification_types >= 0
+    ) || [];
+    const playerIds = subscribedPlayers.map(p => p.id);
+
+    if (playerIds.length === 0) {
+      console.log('⚠️ No subscribed players found - skipping notification');
+      return { success: false, reason: 'no_subscribers' };
+    }
+
+    // Build notification payload
+    const payload = {
+      app_id: ONESIGNAL_APP_ID,
+      headings: { en: title, he: title },
+      contents: { en: body, he: body },
+      include_player_ids: playerIds,
+      
+      // URL to open
+      url: orderData.url || `${SITE_URL}/shop`,
+      
+      // Sound and visual settings
+      android_accent_color: '8B5CF6FF',
+      android_visibility: 1,
+      android_sound: 'default',
+      android_led_color: '8B5CF6FF',
+      priority: 10,
+      
+      // iOS settings
+      ios_badgeType: 'Increase',
+      ios_badgeCount: 1,
+      ios_sound: 'default',
+      
+      // Delivery
+      ttl: 259200,
+      content_available: true,
+      mutable_content: true
+    };
+
+    const response = await fetch('https://onesignal.com/api/v1/notifications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': isV2Key ? `Bearer ${ONESIGNAL_REST_API_KEY}` : `Basic ${ONESIGNAL_REST_API_KEY}`
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error('❌ OneSignal error:', result);
+      return { success: false, error: result.errors?.[0] };
+    }
+
+    console.log(`✅ Push notification sent to ${playerIds.length} devices (ID: ${result.id})`);
+    return { success: true, id: result.id, recipients: playerIds.length };
+
+  } catch (error) {
+    console.error('❌ Error sending push notification:', error);
+    return { success: false, error: error.message };
+  }
+}
 
 // Helper functions for database logging
 async function logActivity(type, description, status = 'completed', userId = null, generalOrderId = null, metadata = {}) {
@@ -498,6 +585,14 @@ async function sendOrderOpenNotifications(order) {
     }
 
     console.log(`📧 Queued ${emailsToQueue.length} opening notification emails`);
+    
+    // Send push notification: Order Opening
+    await sendPushNotification(
+      `🎉 ${order.title}`,
+      `הזמנה קבוצתית חדשה נפתחה! לחץ כאן להזמנה`,
+      { url: `${SITE_URL}/shop` }
+    );
+    
   } catch (error) {
     console.error('❌ Error queuing opening notifications:', error);
   }
@@ -692,6 +787,13 @@ async function sendOrderCloseNotifications(order) {
     console.log(`   - 1 supplier report (SYSTEM_SUPPLIER_REPORT)`);
     console.log(`   - Total: ${totalEmails} emails queued`);
     
+    // Send push notification: Order Closed
+    await sendPushNotification(
+      `✅ ${order.title || order.name || 'הזמנה קבוצתית'}`,
+      `ההזמנה הקבוצתית נסגרה! תודה על ההשתתפות`,
+      { url: `${SITE_URL}/shop` }
+    );
+    
     await logActivity(
       'cron_closure_emails',
       `Complete closure email system: ${successful.length} personalized + ${(allUsers?.length || 0) - successful.length} general + 2 admin reports for: ${orderName}`,
@@ -795,6 +897,22 @@ async function sendReminderNotification(order, reminderType) {
     }
 
     console.log(`📧 Queued ${emailsToQueue.length} ${reminderType} reminder emails`);
+    
+    // Send push notification: 1 hour or 10 minutes reminder
+    if (reminderType === 'one_hour') {
+      await sendPushNotification(
+        `⏰ ${order.title}`,
+        `נותרה פחות משעה! לחץ כאן להזמנה`,
+        { url: `${SITE_URL}/shop` }
+      );
+    } else if (reminderType === 'final') {
+      await sendPushNotification(
+        `🔔 ${order.title}`,
+        `נותרו 10 דקות! לחץ כאן להזמנה אחרונה`,
+        { url: `${SITE_URL}/shop` }
+      );
+    }
+    
   } catch (error) {
     console.error('❌ Error queuing reminder notifications:', error);
   }
