@@ -466,10 +466,10 @@ export const isSessionExpired = (maxAgeInDays = 365) => {
 /**
  * Refresh session timestamp (call periodically)
  */
-export const refreshSession = () => {
+export const refreshSession = async () => {
     if (typeof window === 'undefined') return;
     
-    const user = getUserSession();
+    const user = await getUserSession();
     if (user) {
         storeUserSession(user);
     }
