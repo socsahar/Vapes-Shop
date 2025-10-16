@@ -1354,6 +1354,12 @@ export default function AdminPage() {
         try {
             setSendNotificationLoading(true);
             
+            console.log('📤 SENDING NOTIFICATION - START');
+            console.log('   Title:', notificationForm.title);
+            console.log('   Message:', notificationForm.message);
+            console.log('   Audience:', notificationForm.audience);
+            console.log('   User IDs:', notificationForm.userIds);
+            
             const response = await fetch('/api/admin/notifications', {
                 method: 'POST',
                 headers: {
@@ -1373,6 +1379,12 @@ export default function AdminPage() {
             });
 
             const result = await response.json();
+            
+            console.log('📥 NOTIFICATION API RESPONSE:');
+            console.log('   Status:', response.status);
+            console.log('   Response:', result);
+            console.log('   Sent Count:', result.notification?.sent_count);
+            console.log('   OneSignal ID:', result.notification?.onesignal_id);
 
             if (response.ok) {
                 setShowNotificationModal(false);
@@ -1383,11 +1395,13 @@ export default function AdminPage() {
                         : `✅ התראה נשלחה ל-${result.notification?.sent_count || 0} משתמשים!`, 
                     'success'
                 );
+                console.log('✅✅✅ NOTIFICATION SENT SUCCESSFULLY ✅✅✅');
             } else {
+                console.error('❌ NOTIFICATION API ERROR:', result.error);
                 showToast(`שגיאה בשליחת ההתראה: ${result.error}`, 'error');
             }
         } catch (error) {
-            console.error('Error sending notification:', error);
+            console.error('❌ NOTIFICATION SEND EXCEPTION:', error);
             showToast('שגיאה בשליחת ההתראה', 'error');
         } finally {
             setSendNotificationLoading(false);
