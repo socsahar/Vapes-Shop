@@ -257,13 +257,14 @@ export const getUserSessionSync = () => {
 
 /**
  * Retrieve user session from storage
- * SIMPLE VERSION - Just use localStorage/cookies, skip Median for now
+ * COMPLETE VERSION - Checks all storage locations including Median
+ * CRITICAL: This function MUST ALWAYS work even if Median API fails!
  */
 export const getUserSession = async () => {
     if (typeof window === 'undefined') return null;
 
     try {
-        // 1. Try localStorage first (fastest and most reliable)
+        // 1. Try localStorage first (fastest and most reliable - ALWAYS works)
         const localUser = localStorage.getItem('user');
         if (localUser) {
             const user = JSON.parse(localUser);
@@ -271,7 +272,24 @@ export const getUserSession = async () => {
             return user;
         }
 
-        // 2. Try cookie as fallback
+        // 2. Try Median App Storage (for persistent login across app restarts)
+        if (isMedianApp()) {
+            try {
+                const medianUser = await medianGetItem('vape_shop_user');
+                if (medianUser) {
+                    const user = JSON.parse(medianUser);
+                    // Restore to localStorage for faster future access
+                    localStorage.setItem('user', medianUser);
+                    console.log('✅ User session restored from Median App Storage');
+                    return user;
+                }
+            } catch (medianError) {
+                // CRITICAL: Don't let Median errors break the function
+                console.warn('⚠️ Median storage check failed (non-critical):', medianError);
+            }
+        }
+
+        // 3. Try cookie as final fallback
         const cookieUser = getCookie('vape_shop_user');
         if (cookieUser) {
             const user = JSON.parse(cookieUser);
@@ -280,10 +298,23 @@ export const getUserSession = async () => {
             return user;
         }
 
-        console.log('❌ No user session found');
+        console.log('ℹ️ No user session found in any storage');
         return null;
     } catch (error) {
-        console.error('Error retrieving user session:', error);
+        // CRITICAL: Emergency fallback - never throw error
+        console.error('❌ Error retrieving user session:', error);
+        
+        // Last resort: try to get from cookie without any processing
+        try {
+            const emergencyCookie = getCookie('vape_shop_user');
+            if (emergencyCookie) {
+                console.log('🚨 Emergency: Using cookie fallback');
+                return JSON.parse(emergencyCookie);
+            }
+        } catch (e) {
+            console.error('🚨 Emergency fallback also failed:', e);
+        }
+        
         return null;
     }
 }
