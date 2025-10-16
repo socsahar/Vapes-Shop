@@ -74,13 +74,17 @@ class OneSignalService {
             large_icon: icon || undefined,
             big_picture: image || undefined,
 
-            // Android specific
+            // Android specific - CRITICAL FOR NOTIFICATIONS TO SHOW
             android_accent_color: '8B5CF6', // Purple color for your brand
             android_visibility: 1, // Public
+            android_sound: 'default', // Enable sound
+            android_led_color: '8B5CF6FF', // LED color
+            priority: 10, // High priority (makes notification show immediately)
             
             // iOS specific  
             ios_badgeType: 'Increase',
             ios_badgeCount: 1,
+            ios_sound: 'default', // Enable sound for iOS
 
             // Schedule if needed
             ...(scheduledAt ? {

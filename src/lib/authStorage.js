@@ -10,12 +10,21 @@
 
 // Check if running in Median app
 const isMedianApp = () => {
-    return typeof window !== 'undefined' && (
-        window.median !== undefined || 
-        window.gonative !== undefined ||
-        navigator.userAgent.includes('gonative') ||
-        navigator.userAgent.includes('median')
-    );
+    if (typeof window === 'undefined') return false;
+    
+    const hasMedian = window.median !== undefined;
+    const hasGoNative = window.gonative !== undefined;
+    const hasMedianUA = navigator.userAgent.includes('gonative') || navigator.userAgent.includes('median');
+    
+    console.log('🔍 Median Detection:', {
+        hasMedian,
+        hasGoNative,
+        hasMedianUA,
+        hasNativeStorage: hasMedian && window.median.nativeStorage !== undefined,
+        userAgent: navigator.userAgent
+    });
+    
+    return hasMedian || hasGoNative || hasMedianUA;
 };
 
 // Median native storage helpers
