@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import OneSignalService from '../../../lib/oneSignalService';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+const oneSignal = new OneSignalService();
 
 // Helper function to queue opening emails to all users
 async function queueOpeningEmails(generalOrder) {
@@ -433,6 +436,26 @@ export async function POST(request) {
 
     } catch (emailSystemError) {
       console.error('Email system error:', emailSystemError);
+    }
+
+    // Send push notification when order opens
+    if (newOrder.status === 'open') {
+      try {
+        console.log('📱 Sending push notification for opened general order...');
+        const deadlineDate = new Date(newOrder.deadline);
+        const timeLeft = Math.floor((deadlineDate - new Date()) / (1000 * 60 * 60)); // hours
+        
+        await oneSignal.sendToAll({
+          title: '🛒 הזמנה קבוצתית חדשה נפתחה!',
+          body: `${title} - נותרו ${timeLeft} שעות להזמנה`,
+          url: '/shop',
+          icon: '/icon.png'
+        });
+        
+        console.log('✅ Push notification sent successfully');
+      } catch (notificationError) {
+        console.error('❌ Failed to send push notification:', notificationError);
+      }
     }
 
     return NextResponse.json({

@@ -1664,7 +1664,7 @@ export default function AdminPage() {
                                 <div className="admin-stat-card revenue">
                                     <div className="admin-stat-icon">💰</div>
                                     <div className="admin-stat-content">
-                                        <div className="admin-stat-number">₪{stats.revenue}</div>
+                                        <div className="admin-stat-number">₪{stats.revenue.toLocaleString('en-US')}</div>
                                         <div className="admin-stat-label">הכנסות</div>
                                     </div>
                                 </div>
@@ -3048,6 +3048,84 @@ export default function AdminPage() {
                                                     <span className="settings-info-value">✅ אוטומטי</span>
                                                 </div>
                                             </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Database Backup Section */}
+                            <div className="admin-section">
+                                <div className="admin-section-header">
+                                    <h3 className="admin-section-title">
+                                        <span className="admin-section-icon">💾</span>
+                                        גיבוי מסד נתונים
+                                    </h3>
+                                    <p className="admin-section-subtitle">הורד גיבוי מלא של כל הנתונים במערכת</p>
+                                </div>
+                                
+                                <div className="admin-settings-grid">
+                                    <div className="admin-settings-card">
+                                        <div className="admin-settings-card-header">
+                                            <h4>יצירת גיבוי</h4>
+                                            <p>הורד קובץ עם כל נתוני המסד</p>
+                                        </div>
+                                        <div className="admin-settings-card-content">
+                                            <div className="settings-info-grid mb-4">
+                                                <div className="settings-info-item">
+                                                    <span className="settings-info-label">כולל:</span>
+                                                    <span className="settings-info-value">משתמשים, מוצרים, הזמנות</span>
+                                                </div>
+                                                <div className="settings-info-item">
+                                                    <span className="settings-info-label">פורמט:</span>
+                                                    <span className="settings-info-value">SQL / JSON</span>
+                                                </div>
+                                                <div className="settings-info-item">
+                                                    <span className="settings-info-label">תדירות מומלצת:</span>
+                                                    <span className="settings-info-value">שבועי</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col gap-2">
+                                                <a
+                                                    href="/api/admin/backup?format=sql"
+                                                    download
+                                                    className="admin-btn admin-btn-primary w-full"
+                                                    style={{display: 'inline-block', textAlign: 'center', textDecoration: 'none'}}
+                                                >
+                                                    💾 הורד גיבוי SQL (מומלץ)
+                                                </a>
+                                                <small className="form-help text-center">
+                                                    קובץ SQL שניתן להריץ ישירות ב-Supabase SQL Editor
+                                                </small>
+                                                <a
+                                                    href="/api/admin/backup?format=json"
+                                                    download
+                                                    className="admin-btn admin-btn-secondary w-full"
+                                                    style={{display: 'inline-block', textAlign: 'center', textDecoration: 'none', marginTop: '0.5rem'}}
+                                                >
+                                                    📄 הורד גיבוי JSON
+                                                </a>
+                                                <small className="form-help text-center">
+                                                    קובץ JSON לשמירה ארכיונית
+                                                </small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="admin-settings-card">
+                                        <div className="admin-settings-card-header">
+                                            <h4>⚠️ חשוב לדעת</h4>
+                                            <p>הנחיות לגיבוי והחזרת נתונים</p>
+                                        </div>
+                                        <div className="admin-settings-card-content">
+                                            <ul className="settings-tips-list">
+                                                <li>✅ גיבוי SQL ניתן להריץ ישירות ב-Supabase</li>
+                                                <li>✅ פשוט העתק והדבק את תוכן הקובץ ל-SQL Editor</li>
+                                                <li>✅ צור גיבוי לפני שינויים משמעותיים</li>
+                                                <li>✅ שמור גיבויים מרובים (לא רק את האחרון)</li>
+                                                <li>⚠️ קובץ הגיבוי מכיל נתונים רגישים</li>
+                                                <li>⚠️ אל תשתף את הקובץ בפומבי</li>
+                                                <li>🔄 השחזור ימחק נתונים קיימים!</li>
+                                            </ul>
                                         </div>
                                     </div>
                                 </div>

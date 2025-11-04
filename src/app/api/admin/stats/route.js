@@ -39,15 +39,15 @@ export async function GET(request) {
             console.error('Error counting general orders:', generalOrdersError);
         }
 
-        // Calculate total revenue
-        const { data: orders, error: revenueError } = await supabaseAdmin
-            .from('orders')
+        // Calculate total revenue from CLOSED general orders
+        const { data: closedGeneralOrders, error: revenueError } = await supabaseAdmin
+            .from('general_orders')
             .select('total_amount')
-            .eq('status', 'completed');
+            .eq('status', 'closed');
 
         let totalRevenue = 0;
-        if (!revenueError && orders) {
-            totalRevenue = orders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
+        if (!revenueError && closedGeneralOrders) {
+            totalRevenue = closedGeneralOrders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
         }
 
         return NextResponse.json({

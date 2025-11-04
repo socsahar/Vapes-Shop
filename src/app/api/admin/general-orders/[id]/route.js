@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import OneSignalService from '../../../../lib/oneSignalService';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+const oneSignal = new OneSignalService();
 
 // GET - Get specific general order details
 export async function GET(request, context) {
@@ -86,6 +89,20 @@ export async function PUT(request, context) {
     if (deadline !== undefined) updateData.deadline = new Date(deadline).toISOString();
     if (status !== undefined) updateData.status = status;
 
+    // If closing the order, calculate and store total_amount and total_orders
+    if (status === 'closed') {
+      const { data: orders, error: ordersError } = await supabase
+        .from('orders')
+        .select('total_amount')
+        .eq('general_order_id', id);
+
+      if (!ordersError && orders) {
+        updateData.total_orders = orders.length;
+        updateData.total_amount = orders.reduce((sum, order) => sum + parseFloat(order.total_amount || 0), 0);
+        console.log(`💰 Closing order with ${orders.length} orders, total amount: ₪${updateData.total_amount}`);
+      }
+    }
+
     const { data: updatedOrder, error } = await supabase
       .from('general_orders')
       .update(updateData)
@@ -115,6 +132,24 @@ export async function PUT(request, context) {
 
       if (shopError) {
         console.error('Error closing shop:', shopError);
+      }
+
+      // Send push notification when order closes
+      try {
+        console.log('📱 Sending push notification for closed general order...');
+        const totalOrders = updateData.total_orders || 0;
+        const totalAmount = updateData.total_amount || 0;
+        
+        await oneSignal.sendToAll({
+          title: '🔒 הזמנה קבוצתית נסגרה',
+          body: `${updatedOrder.title} נסגרה. סה"כ ${totalOrders} הזמנות, ₪${totalAmount.toLocaleString('en-US')}`,
+          url: '/shop',
+          icon: '/icon.png'
+        });
+        
+        console.log('✅ Push notification sent successfully for closed order');
+      } catch (notificationError) {
+        console.error('❌ Failed to send push notification:', notificationError);
       }
 
       // Trigger automatic closure emails for all participants
