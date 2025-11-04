@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import OneSignalService from '../../../lib/oneSignalService';
+import OneSignalService from '@/lib/oneSignalService';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
