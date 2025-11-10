@@ -1,931 +1,1005 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getCurrentUser, signOut, makeAuthenticatedRequest } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { showToast } from '../../components/Toast';
+import { getCurrentUser } from '../../lib/supabase';
 
 export default function ShopPage() {
+    const router = useRouter();
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [products, setProducts] = useState([]);
-    const [productsLoading, setProductsLoading] = useState(false);
-    const [groupOrders, setGroupOrders] = useState([]);
-    const [groupOrdersLoading, setGroupOrdersLoading] = useState(false);
-    const [selectedOrder, setSelectedOrder] = useState(null);
-    const [cart, setCart] = useState({});
-    const [showParticipateModal, setShowParticipateModal] = useState(false);
-    const [participateLoading, setParticipateLoading] = useState(false);
-    const [shopStatus, setShopStatus] = useState('loading');
-    const [shopStatusMessage, setShopStatusMessage] = useState('');
-    const [actualShopData, setActualShopData] = useState(null);
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    const [lastUpdated, setLastUpdated] = useState(null);
-    const [userParticipation, setUserParticipation] = useState({});
-    const [showUserOrderModal, setShowUserOrderModal] = useState(false);
-    const [selectedUserOrder, setSelectedUserOrder] = useState(null);
-    // Static shop settings - not affected by admin panel changes
-    const shopSettings = {
-        closedTitle: 'החנות סגורה כרגע. נפתח בהזמנה קבוצתית הבאה.',
-        closedMessage: 'החנות פועלת במודל הזמנות קבוצתיות בלבד\nכאשר המנהל יפתח הזמנה קבוצתית חדשה, תוכל להשתתף',
-        closedInstructions: [
-            '🕐 המנהל פותח הזמנה קבוצתית עם תאריך סגירה',
-            '📧 תקבל התראה באימייל כשההזמנה נפתחת',
-            '🛒 תוכל להצטרף ולהזמין מוצרים עד תאריך הסגירה',
-            '� תשלום יש להעביר במזומן באיסוף או בפייבוקס: 0546743526'
-        ]
-    };
-    const router = useRouter();
+    const [productsLoading, setProductsLoading] = useState(true);
+    const [productsError, setProductsError] = useState(null);
+    const [cart, setCart] = useState([]);
+    const [showCart, setShowCart] = useState(false);
+    const [productQuantities, setProductQuantities] = useState({}); // Track quantity for each product
+    const [shopStatus, setShopStatus] = useState(null);
+    const [currentGeneralOrder, setCurrentGeneralOrder] = useState(null);
+    const [userParticipation, setUserParticipation] = useState(null);
+    const [shopStatusLoading, setShopStatusLoading] = useState(true);
+    const [hasPlacedOrder, setHasPlacedOrder] = useState(false);
+    const [showOrdersModal, setShowOrdersModal] = useState(false);
+    const [userOrders, setUserOrders] = useState([]);
+    const [ordersLoading, setOrdersLoading] = useState(false);
 
     useEffect(() => {
-        const checkAuth = async () => {
-            try {
-                const currentUser = await getCurrentUser();
-                if (!currentUser) {
-                    router.push('/auth/login');
-                    return;
-                }
-                setUser(currentUser);
-                setLoading(false);
-            } catch (error) {
-                console.error('Error checking auth:', error);
+        const loadUser = async () => {
+            const currentUser = await getCurrentUser();
+            if (!currentUser) {
                 router.push('/auth/login');
+                return;
             }
+            setUser(currentUser);
+            setLoading(false);
+            loadProducts();
+            loadCart();
+            loadShopStatus();
+            checkUserParticipation(currentUser.id);
         };
-        
-        checkAuth();
+        loadUser();
     }, [router]);
 
-    useEffect(() => {
-        if (user) {
-            fetchGroupOrders();
-            fetchProducts(); // Always fetch products
-            // fetchShopSettings(); // Disabled - using static settings instead
-            fetchActualShopStatus(); // Fetch real shop status from database
-        }
-    }, [user]);
-
-    // Separate effect for polling with dynamic intervals
-    useEffect(() => {
-        if (!user) return;
-        
-        let interval;
-        
-        const setupPolling = () => {
-            // Clear any existing interval
-            if (interval) {
-                clearInterval(interval);
-            }
-            
-            // Determine polling frequency based on current status
-            let pollingInterval = 45000; // Default 45s when closed
-            
-            if (groupOrders.length > 0) {
-                const hasEndingSoon = groupOrders.some(order => order.is_ending_soon);
-                pollingInterval = hasEndingSoon ? 45000 : 45000; // 45s if ending soon, 45s if open
-            }
-            
-            console.log(`Setting up polling every ${pollingInterval/1000}s (${groupOrders.length} active orders)`);
-            
-            interval = setInterval(async () => {
-                await Promise.all([
-                    fetchGroupOrders(),
-                    fetchActualShopStatus()
-                ]);
-            }, pollingInterval);
-        };
-        
-        // Set up initial polling
-        setupPolling();
-        
-        // Clean up on unmount
-        return () => {
-            if (interval) {
-                clearInterval(interval);
-            }
-        };
-    }, [user, groupOrders.length, groupOrders.some(order => order?.is_ending_soon)]); // Re-setup when status changes
-
-    const fetchGroupOrders = async (isManualRefresh = false) => {
+    const loadProducts = async () => {
         try {
-            if (isManualRefresh) {
-                setIsRefreshing(true);
-            }
-            setGroupOrdersLoading(true);
-            const response = await makeAuthenticatedRequest('/api/group-orders');
-            if (response.ok) {
-                const data = await response.json();
-                setGroupOrders(data.orders || []);
-                
-                // Don't set shop status here - let fetchActualShopStatus handle it
-                setLastUpdated(new Date());
-                
-                // Fetch detailed participation for each order
-                await fetchUserParticipation(data.orders || []);
-            } else {
-                setGroupOrders([]);
-            }
-        } catch (error) {
-            console.error('Error fetching group orders:', error);
-            setGroupOrders([]);
-        } finally {
-            setGroupOrdersLoading(false);
-            setIsRefreshing(false);
-        }
-    };
-
-    const fetchUserParticipation = async (orders) => {
-        if (!user || orders.length === 0) return;
-        
-        const participationData = {};
-        
-        for (const order of orders) {
-            if (order.user_participating) {
-                try {
-                    const response = await makeAuthenticatedRequest(`/api/general-orders/participate?general_order_id=${order.id}`);
-                    if (response.ok) {
-                        const data = await response.json();
-                        participationData[order.id] = data;
-                    }
-                } catch (error) {
-                    console.error(`Error fetching participation for order ${order.id}:`, error);
-                }
-            }
-        }
-        
-        setUserParticipation(participationData);
-    };
-
-    const fetchProducts = async () => {
-        try {
-            setProductsLoading(true);
+            setProductsError(null);
             const response = await fetch('/api/products');
             if (response.ok) {
                 const data = await response.json();
                 setProducts(data.products || []);
+            } else {
+                throw new Error('Failed to fetch products');
             }
         } catch (error) {
-            console.error('Error fetching products:', error);
+            console.error('Error loading products:', error);
+            setProductsError('שגיאה בטעינת המוצרים. אנא נסה שוב.');
         } finally {
             setProductsLoading(false);
         }
     };
 
-    // fetchShopSettings function disabled - using static settings instead
-    // const fetchShopSettings = async () => {
-    //     try {
-    //         const response = await fetch('/api/shop/status');
-    //         if (response.ok) {
-    //             const data = await response.json();
-    //             if (data.message) {
-    //                 try {
-    //                     // Try to parse as JSON first (new structured format)
-    //                     const parsedSettings = JSON.parse(data.message);
-    //                     if (parsedSettings.closedTitle || parsedSettings.closedMessage || parsedSettings.closedInstructions) {
-    //                         setShopSettings(prev => ({
-    //                             ...prev,
-    //                             closedTitle: parsedSettings.closedTitle || prev.closedTitle,
-    //                             closedMessage: parsedSettings.closedMessage || prev.closedMessage,
-    //                             closedInstructions: parsedSettings.closedInstructions || prev.closedInstructions
-    //                         }));
-    //                         return;
-    //                     }
-    //                 } catch (jsonError) {
-    //                     // Fallback to old format (plain text)
-    //                     const [title, ...messageParts] = data.message.split('\n');
-    //                     setShopSettings(prev => ({
-    //                         ...prev,
-    //                         closedTitle: title || prev.closedTitle,
-    //                         closedMessage: messageParts.join('\n') || prev.closedMessage
-    //                     }));
-    //                 }
-    //             }
-    //         }
-    //     } catch (error) {
-    //         console.error('Error fetching shop settings:', error);
-    //     }
-    // };
+    const loadCart = () => {
+        if (typeof window !== 'undefined') {
+            const savedCart = localStorage.getItem('cart');
+            if (savedCart) {
+                try {
+                    setCart(JSON.parse(savedCart));
+                } catch (error) {
+                    console.error('Error loading cart:', error);
+                    setCart([]);
+                }
+            }
+        }
+    };
 
-    const fetchActualShopStatus = async () => {
+    const loadShopStatus = async () => {
         try {
             const response = await fetch('/api/shop/status');
             if (response.ok) {
-                const data = await response.json();
-                setActualShopData(data);
-                
-                // Set shop status and message based on database data
-                if (data.is_open) {
-                    setShopStatus('open');
-                    setShopStatusMessage(data.message || 'החנות פתוחה - הזמנות קבוצתיות פעילות');
-                } else {
-                    setShopStatus('closed');
-                    setShopStatusMessage(data.message || 'החנות סגורה - אין הזמנות קבוצתיות פעילות');
-                }
-            } else {
-                // Fallback status
-                setShopStatus('closed');
-                setShopStatusMessage('החנות סגורה - אין הזמנות קבוצתיות פעילות');
+                const status = await response.json();
+                setShopStatus(status);
+                setCurrentGeneralOrder(status.current_general_order);
             }
         } catch (error) {
-            console.error('Error fetching actual shop status:', error);
-            setShopStatus('closed');
-            setShopStatusMessage('שגיאה בטעינת סטטוס החנות');
-        }
-    };
-
-    const handleAddToCart = (productId, quantity = 1) => {
-        if (!selectedOrder) return;
-        
-        setCart(prev => ({
-            ...prev,
-            [productId]: (prev[productId] || 0) + quantity
-        }));
-    };
-
-    const handleRemoveFromCart = (productId) => {
-        setCart(prev => {
-            const newCart = { ...prev };
-            delete newCart[productId];
-            return newCart;
-        });
-    };
-
-    const handleQuantityChange = (productId, quantity) => {
-        if (quantity <= 0) {
-            handleRemoveFromCart(productId);
-        } else {
-            setCart(prev => ({
-                ...prev,
-                [productId]: quantity
-            }));
-        }
-    };
-
-    const calculateCartTotal = () => {
-        return Object.entries(cart).reduce((total, [productId, quantity]) => {
-            const product = products.find(p => p.id === productId);
-            return total + (product ? product.price * quantity : 0);
-        }, 0);
-    };
-
-    const getCartItemsCount = () => {
-        return Object.values(cart).reduce((total, quantity) => total + quantity, 0);
-    };
-
-    const handleParticipate = async () => {
-        if (!selectedOrder || Object.keys(cart).length === 0) {
-            showToast('אנא בחר מוצרים להזמנה', 'warning');
-            return;
-        }
-
-        try {
-            setParticipateLoading(true);
-            
-            const items = Object.entries(cart).map(([productId, quantity]) => ({
-                product_id: productId,
-                quantity
-            }));
-
-            const response = await makeAuthenticatedRequest('/api/general-orders/participate', {
-                method: 'POST',
-                body: JSON.stringify({
-                    general_order_id: selectedOrder.id,
-                    items
-                })
-            });
-
-            const result = await response.json();
-
-            if (response.ok) {
-                showToast('השתתפת בהזמנה הקבוצתית בהצלחה!', 'success');
-                setCart({});
-                setShowParticipateModal(false);
-                fetchGroupOrders(); // Refresh to update participation status
-            } else {
-                showToast(`שגיאה: ${result.error}`, 'error');
-            }
-        } catch (error) {
-            console.error('Error participating:', error);
-            showToast('שגיאה בהשתתפות בהזמנה', 'error');
+            console.error('Error loading shop status:', error);
         } finally {
-            setParticipateLoading(false);
+            setShopStatusLoading(false);
         }
     };
 
-    const handleSelectOrder = (order) => {
-        // Only allow selection of open orders
-        if (order.status === 'open') {
-            setSelectedOrder(order);
-            setCart({});
+    const checkUserParticipation = async (userId) => {
+        if (!userId) return;
+        
+        try {
+            const response = await fetch(`/api/general-orders/participate?user_id=${userId}`);
+            if (response.ok) {
+                const data = await response.json();
+                setUserParticipation(data);
+                setHasPlacedOrder(data.hasOrder);
+                if (data.hasOrder && data.participation) {
+                    // Convert participation to cart format
+                    const cartItems = data.participation.map(item => ({
+                        id: item.product.id || item.product_id,
+                        name: item.product.name,
+                        price: item.product.price,
+                        quantity: item.quantity
+                    }));
+                    setCart(cartItems);
+                }
+            }
+        } catch (error) {
+            console.error('Error checking user participation:', error);
         }
     };
 
-    const handleViewUserOrder = (order) => {
-        const participation = userParticipation[order.id];
-        if (participation && participation.participating) {
-            setSelectedUserOrder({
-                ...order,
-                participation: participation
+    const loadUserOrders = async () => {
+        if (!user || !user.id) {
+            console.error('No user available for loading orders');
+            setOrdersLoading(false);
+            return;
+        }
+        
+        setOrdersLoading(true);
+        try {
+            // Create authentication token - encode to base64 safely with unicode support
+            // Convert string to base64 using encodeURIComponent to handle Hebrew characters
+            const tokenString = user.id + user.username;
+            const userToken = btoa(unescape(encodeURIComponent(tokenString)));
+            
+            console.log('Loading orders for user:', user.username, 'ID:', user.id);
+            
+            const response = await fetch('/api/orders', {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-id': user.id,
+                    'x-user-token': userToken
+                }
             });
-            setShowUserOrderModal(true);
+            
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Orders loaded successfully:', data.total_orders, 'orders');
+                setUserOrders(data.orders || []);
+            } else {
+                const errorData = await response.json();
+                console.error('Failed to load orders:', response.status, errorData);
+                alert(errorData.error || 'שגיאה בטעינת ההזמנות');
+            }
+        } catch (error) {
+            console.error('Error loading orders:', error);
+            alert('שגיאה בטעינת ההזמנות');
+        } finally {
+            setOrdersLoading(false);
         }
     };
 
-    const handleCancelUserOrder = async (orderId) => {
-        if (!confirm('האם אתה בטוח שברצונך לבטל את ההשתתפות שלך? פעולה זו אינה ניתנת לביטול.')) {
+    const handleShowOrders = () => {
+        setShowOrdersModal(true);
+        loadUserOrders();
+    };
+
+    const handleReorder = async (order) => {
+        // Check if shop is open
+        if (!shopStatus || !shopStatus.is_open || !currentGeneralOrder) {
+            alert('לא ניתן להזמין כרגע - החנות סגורה');
             return;
         }
 
         try {
-            const response = await makeAuthenticatedRequest('/api/group-orders', {
+            // Get current products to check availability
+            const productsResponse = await fetch('/api/products');
+            if (!productsResponse.ok) {
+                alert('שגיאה בטעינת המוצרים');
+                return;
+            }
+            
+            const productsData = await productsResponse.json();
+            const availableProducts = productsData.products || [];
+
+            // Map order items to available products
+            const availableItems = [];
+            const missingItems = [];
+
+            order.items.forEach(orderItem => {
+                // Get product ID from nested product object
+                const productId = orderItem.product?.id;
+                if (!productId) {
+                    missingItems.push(orderItem.product?.name || 'מוצר לא ידוע');
+                    return;
+                }
+                
+                const product = availableProducts.find(p => p.id === productId);
+                if (product) {
+                    availableItems.push({
+                        id: product.id,
+                        name: product.name,
+                        price: product.price,
+                        quantity: orderItem.quantity,
+                        image_url: product.image_url
+                    });
+                } else {
+                    missingItems.push(orderItem.product?.name || 'מוצר לא ידוע');
+                }
+            });
+
+            // If there are missing items, ask user what to do
+            if (missingItems.length > 0) {
+                const missingList = missingItems.join('\n• ');
+                const userChoice = confirm(
+                    `⚠️ המוצרים הבאים אינם זמינים:\n\n• ${missingList}\n\n` +
+                    `להזמין ללא המוצרים החסרים או לבצע הזמנה חדשה?\n\n` +
+                    `✅ לחץ "אישור" להזמין ללא המוצרים החסרים\n` +
+                    `❌ לחץ "ביטול" לבצע הזמנה חדשה ידנית`
+                );
+
+                if (!userChoice) {
+                    // User chose to make a new order manually
+                    setShowOrdersModal(false);
+                    return;
+                }
+
+                // If no items are available at all
+                if (availableItems.length === 0) {
+                    alert('❌ אף אחד מהמוצרים בהזמנה הקודמת לא זמין כרגע');
+                    return;
+                }
+            }
+
+            // Add items to cart
+            saveCart(availableItems);
+            
+            // Close orders modal and open cart
+            setShowOrdersModal(false);
+            setShowCart(true);
+            
+            // Show success message
+            const message = missingItems.length > 0 
+                ? `✅ ${availableItems.length} מוצרים נוספו לעגלה\n⚠️ ${missingItems.length} מוצרים חסרים לא נוספו`
+                : `✅ ${availableItems.length} מוצרים נוספו לעגלה בהצלחה!`;
+            alert(message);
+
+        } catch (error) {
+            console.error('Error reordering:', error);
+            alert('שגיאה בביצוע ההזמנה מחדש');
+        }
+    };
+
+    const saveCart = (cartItems) => {
+        setCart(cartItems);
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('cart', JSON.stringify(cartItems));
+        }
+    };
+
+    const addToCart = (product, quantity = 1) => {
+        const existingItem = cart.find(item => item.id === product.id);
+        if (existingItem) {
+            const newCart = cart.map(item =>
+                item.id === product.id 
+                    ? { ...item, quantity: item.quantity + quantity }
+                    : item
+            );
+            saveCart(newCart);
+        } else {
+            const newCart = [...cart, { ...product, quantity }];
+            saveCart(newCart);
+        }
+        
+        // Reset the product quantity after adding to cart
+        setProductQuantities(prev => ({ ...prev, [product.id]: 1 }));
+    };
+
+    const updateProductQuantity = (productId, newQuantity) => {
+        if (newQuantity < 1) newQuantity = 1;
+        if (newQuantity > 99) newQuantity = 99; // Set a reasonable max
+        setProductQuantities(prev => ({ ...prev, [productId]: newQuantity }));
+    };
+
+    const getProductQuantity = (productId) => {
+        return productQuantities[productId] || 1;
+    };
+
+    const removeFromCart = (productId) => {
+        const newCart = cart.filter(item => item.id !== productId);
+        saveCart(newCart);
+    };
+
+    const updateCartQuantity = (productId, quantity) => {
+        if (quantity <= 0) {
+            removeFromCart(productId);
+            return;
+        }
+        
+        const newCart = cart.map(item => 
+            item.id === productId 
+                ? { ...item, quantity }
+                : item
+        );
+        saveCart(newCart);
+    };
+
+    const getCartTotal = () => {
+        return cart.reduce((total, item) => total + (item.price * item.quantity), 0).toFixed(2);
+    };
+
+    const placeGeneralOrder = async () => {
+        if (!user || !currentGeneralOrder || cart.length === 0) {
+            alert('לא ניתן לבצע הזמנה כרגע');
+            return;
+        }
+
+        try {
+            // Create authentication token - encode to base64 safely with unicode support
+            const tokenString = user.id + user.username;
+            const userToken = btoa(unescape(encodeURIComponent(tokenString)));
+
+            const orderData = {
+                general_order_id: currentGeneralOrder.id,
+                items: cart.map(item => ({
+                    product_id: item.id,
+                    quantity: item.quantity
+                }))
+            };
+
+            const response = await fetch('/api/general-orders/participate', {
                 method: 'POST',
-                body: JSON.stringify({
-                    general_order_id: orderId,
-                    action: 'leave'
-                })
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-id': user.id,
+                    'x-user-token': userToken
+                },
+                body: JSON.stringify(orderData)
             });
 
             if (response.ok) {
-                showToast('ההשתתפות בוטלה בהצלחה!', 'success');
-                await fetchGroupOrders(); // Refresh to update participation status
-                setShowUserOrderModal(false);
+                const result = await response.json();
+                alert('הזמנה נשלחה בהצלחה!');
+                setHasPlacedOrder(true);
+                setShowCart(false);
+                // Refresh participation status
+                checkUserParticipation(user.id);
             } else {
                 const error = await response.json();
-                showToast(`שגיאה בביטול ההשתתפות: ${error.error}`, 'error');
+                alert(error.error || 'שגיאה בשליחת ההזמנה');
             }
         } catch (error) {
-            console.error('Error canceling participation:', error);
-            showToast('שגיאה בביטול ההשתתפות', 'error');
+            console.error('Error placing general order:', error);
+            alert('שגיאה בשליחת ההזמנה');
         }
     };
 
-    const handleLogout = async () => {
-        await signOut();
-        router.push('/');
+    const cancelOrder = async () => {
+        if (!user || !currentGeneralOrder) {
+            alert('לא ניתן לבטל הזמנה כרגע');
+            return;
+        }
+
+        const confirmCancel = confirm('❌ האם אתה בטוח שברצונך לבטל את ההזמנה?\n\nהפעולה תמחק את כל הפריטים מההזמנה הנוכחית.');
+        if (!confirmCancel) {
+            return;
+        }
+
+        try {
+            // Create authentication token
+            const tokenString = user.id + user.username;
+            const userToken = btoa(unescape(encodeURIComponent(tokenString)));
+
+            const response = await fetch(`/api/general-orders/participate?general_order_id=${currentGeneralOrder.id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-id': user.id,
+                    'x-user-token': userToken
+                }
+            });
+
+            if (response.ok) {
+                alert('✅ ההזמנה בוטלה בהצלחה!');
+                setHasPlacedOrder(false);
+                setCart([]);
+                setShowCart(false);
+                // Refresh participation status
+                checkUserParticipation(user.id);
+            } else {
+                const error = await response.json();
+                alert(error.error || 'שגיאה בביטול ההזמנה');
+            }
+        } catch (error) {
+            console.error('Error canceling order:', error);
+            alert('שגיאה בביטול ההזמנה');
+        }
     };
 
-    const handleManualRefresh = async () => {
-        await Promise.all([
-            fetchGroupOrders(true),
-            fetchActualShopStatus()
-        ]);
+    const handleLogout = () => {
+        localStorage.removeItem('currentUser');
+        router.push('/auth/login');
     };
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+            <div className="min-h-screen bg-dark flex items-center justify-center">
+                <div className="text-xl text-gray-300">טוען...</div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen shop-page">
-            {/* Background */}
-            <div className="fixed inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50"></div>
-            <div className="fixed inset-0 bg-pattern opacity-5"></div>
+        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 relative overflow-hidden">
+            {/* Animated Background Elements */}
+            <div className="absolute inset-0">
+                <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
+                <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+                <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl animate-pulse delay-500"></div>
+            </div>
+            
+            {/* Floating particles */}
+            <div className="absolute inset-0 overflow-hidden">
+                {Array.from({ length: 20 }).map((_, i) => (
+                    <div 
+                        key={i} 
+                        className="absolute w-2 h-2 bg-blue-400/30 rounded-full animate-float"
+                        style={{
+                            left: `${Math.random() * 100}%`,
+                            top: `${Math.random() * 100}%`,
+                            animationDelay: `${Math.random() * 5}s`,
+                            animationDuration: `${3 + Math.random() * 4}s`
+                        }}
+                    ></div>
+                ))}
+            </div>
 
             {/* Header */}
-            <header className="relative z-10 shop-header">
-                <div className="container mx-auto px-6 py-4">
-                    <div className="flex items-center justify-between mobile-flex-col gap-4">
-                        <div className="flex items-center space-x-4 space-x-reverse mobile-w-full mobile-text-center">
-                            <Link href="/" className="shop-logo">
-                                <span className="text-2xl">💨</span>
-                                <span className="font-bold">הוייפ שופ</span>
-                            </Link>
-                            <div className={`shop-status ${shopStatus} mobile-w-full`}>
-                                <div className="flex items-center gap-2 mobile-text-center mobile-flex-col">
-                                    {shopStatus === 'open' ? (
-                                        <>
-                                            <span className="status-indicator open"></span>
-                                            <span className="text-sm md:text-base">{shopStatusMessage}</span>
-                                        </>
-                                    ) : shopStatus === 'closed' ? (
-                                        <>
-                                            <span className="status-indicator closed"></span>
-                                            <span className="text-sm md:text-base">{shopStatusMessage}</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <span className="status-indicator loading"></span>
-                                            <span className="text-sm md:text-base">בודק סטטוס...</span>
-                                        </>
-                                    )}
-                                    
-                                    {/* Auto-refresh indicator and manual refresh button */}
-                                    <div className="flex items-center gap-1 text-xs opacity-70">
-                                        {isRefreshing && (
-                                            <span className="animate-spin">🔄</span>
-                                        )}
-                                        <button 
-                                            onClick={handleManualRefresh}
-                                            disabled={isRefreshing}
-                                            className="hover:opacity-100 transition-opacity disabled:opacity-50"
-                                            title="רענן סטטוס החנות"
-                                        >
-                                            ↻
-                                        </button>
-                                        {lastUpdated && (
-                                            <span title={`עודכן לאחרונה: ${lastUpdated.toLocaleTimeString('he-IL')}`}>
-                                                {lastUpdated.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
+            <header className="relative z-10 backdrop-blur-md bg-white/10 border-b border-white/20 shadow-lg">
+                <div className="container mx-auto px-4 py-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4 space-x-reverse">
+                            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                                הוייפ שופ
+                            </h1>
+                            <span className="text-gray-400">|</span>
+                            <span className="text-gray-200">שלום {user?.full_name}</span>
                         </div>
                         
-                        <nav className="flex items-center space-x-4 space-x-reverse">
-                            <span className="shop-welcome">שלום {user?.full_name}</span>
+                        <nav className="flex items-center gap-4">
+                            <Link 
+                                href="/shop" 
+                                className="btn btn-primary"
+                            >
+                                🏪 חנות
+                            </Link>
+                            <button 
+                                onClick={handleShowOrders}
+                                className="btn btn-secondary"
+                            >
+                                📋 ההזמנות שלי
+                            </button>
                             {user?.role === 'admin' && (
-                                <Link href="/admin" className="shop-nav-link admin">
-                                    <span className="ml-2">⚡</span>
-                                    פאנל ניהול
+                                <Link 
+                                    href="/admin" 
+                                    className="btn btn-primary"
+                                >
+                                    ⚙️ ניהול
                                 </Link>
                             )}
-                            <button onClick={handleLogout} className="shop-nav-link logout">
-                                <span className="ml-2">🚪</span>
-                                יציאה
+                            <button
+                                onClick={() => setShowCart(true)}
+                                className="btn btn-primary relative"
+                            >
+                                🛒
+                                {cart.length > 0 && (
+                                    <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold animate-bounce">
+                                        {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                                    </span>
+                                )}
+                            </button>
+                            <button 
+                                onClick={handleLogout}
+                                type="button"
+                                className="btn btn-outline"
+                            >
+                                🚪 יציאה
                             </button>
                         </nav>
                     </div>
                 </div>
             </header>
 
-            <main className="relative z-10 shop-main">
-                <div className="container mx-auto px-6 py-8">
-                    {shopStatus === 'closed' ? (
-                        // Shop Closed State - Show products but disable ordering
-                        <div className="shop-closed-state">
-                            <div className="closed-header">
-                                <div className="closed-icon">🔒</div>
-                                <h1 className="closed-title">{shopSettings.closedTitle}</h1>
-                                <p className="closed-message">
-                                    {shopSettings.closedMessage.split('\n').map((line, index) => (
-                                        <span key={index}>
-                                            {line}
-                                            {index < shopSettings.closedMessage.split('\n').length - 1 && <br />}
-                                        </span>
-                                    ))}
-                                </p>
-                                <div className="closed-info">
-                                    <h3 className="how-it-works-heading">איך זה עובד?</h3>
-                                    <ul>
-                                        {shopSettings.closedInstructions.map((instruction, index) => (
-                                            <li key={index}>{instruction}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                                <button 
-                                    onClick={fetchGroupOrders}
-                                    className="btn-primary refresh-btn"
-                                    disabled={groupOrdersLoading}
-                                >
-                                    {groupOrdersLoading ? 'בודק...' : 'בדוק שוב'}
-                                </button>
-                            </div>
-                            
-                            {/* Products catalog - visible but not orderable */}
-                            <section className="products-catalog-closed">
-                                <div className="section-header">
-                                    <h2 className="section-title">קטלוג המוצרים שלנו</h2>
-                                    <p className="section-subtitle">עיין במוצרים הזמינים - ההזמנה תתאפשר כשתיפתח הזמנה קבוצתית</p>
-                                </div>
-                                
-                                {productsLoading ? (
-                                    <div className="loading-state">
-                                        <div className="spinner"></div>
-                                        <p>טוען מוצרים...</p>
-                                    </div>
-                                ) : products.length > 0 ? (
-                                    <div className="products-grid products-disabled">
-                                        {products.map((product) => (
-                                            <div key={product.id} className="product-card disabled">
-                                                <div className="product-image">
-                                                    {product.image_url ? (
-                                                        <img 
-                                                            src={product.image_url} 
-                                                            alt={product.name}
-                                                            onError={(e) => {
-                                                                e.target.style.display = 'none';
-                                                                e.target.nextSibling.style.display = 'flex';
-                                                            }}
-                                                        />
-                                                    ) : null}
-                                                    <div 
-                                                        className="product-placeholder"
-                                                        style={{display: product.image_url ? 'none' : 'flex'}}
-                                                    >
-                                                        💨
-                                                    </div>
-                                                    <div className="disabled-overlay">
-                                                        <span>לא זמין להזמנה</span>
-                                                    </div>
-                                                </div>
-                                                
-                                                <div className="product-info">
-                                                    <h3 className="product-name">{product.name}</h3>
-                                                    {product.description && (
-                                                        <p className="product-description">{product.description}</p>
-                                                    )}
-                                                    <div className="product-price">₪{product.price}</div>
-                                                </div>
-                                                
-                                                <div className="product-actions">
-                                                    <button className="btn-disabled" disabled>
-                                                        חנות סגורה
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="empty-state">
-                                        <div className="empty-icon">📦</div>
-                                        <p>אין מוצרים זמינים כרגע</p>
-                                    </div>
-                                )}
-                            </section>
-                        </div>
-                    ) : (
-                        // Shop Open State
-                        <div className="shop-content">
-                            {/* Active Group Orders */}
-                            <section className="group-orders-section">
-                                <div className="section-header">
-                                    <h2 className="section-title">הזמנות קבוצתיות פעילות</h2>
-                                    <p className="section-subtitle">בחר הזמנה קבוצתית להשתתפות</p>
-                                </div>
-                                
-                                {groupOrdersLoading ? (
-                                    <div className="loading-state">
-                                        <div className="spinner"></div>
-                                        <p>טוען הזמנות קבוצתיות...</p>
-                                    </div>
-                                ) : (
-                                    <div className="group-orders-grid">
-                                        {groupOrders.map((order) => (
-                                            <div 
-                                                key={order.id} 
-                                                className={`group-order-card ${selectedOrder?.id === order.id ? 'selected' : ''} ${order.user_participating ? 'participating' : ''} ${order.status === 'scheduled' ? 'scheduled' : ''}`}
-                                                onClick={() => order.status === 'open' ? handleSelectOrder(order) : null}
-                                                style={{ cursor: order.status === 'scheduled' ? 'not-allowed' : 'pointer' }}
-                                            >
-                                                <div className="order-header">
-                                                    <h3 className="order-title">{order.title}</h3>
-                                                    <div className="order-badges">
-                                                        {order.status === 'scheduled' && (
-                                                            <span className="status-badge scheduled">מתוזמן</span>
-                                                        )}
-                                                        {order.user_participating && (
-                                                            <span className="participation-badge">משתתף</span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                
-                                                {order.description && (
-                                                    <p className="order-description">{order.description}</p>
-                                                )}
-                                                
-                                                {order.status === 'scheduled' && order.opening_time ? (
-                                                    <div className="scheduled-info">
-                                                        <strong>יפתח ב:</strong> {new Date(order.opening_time).toLocaleDateString('he-IL', {
-                                                            weekday: 'short',
-                                                            month: 'short',
-                                                            day: 'numeric',
-                                                            hour: '2-digit',
-                                                            minute: '2-digit'
-                                                        })}
-                                                    </div>
-                                                ) : (
-                                                    <div className="order-stats">
-                                                        <div className="stat">
-                                                            <span className="stat-label">משתתפים:</span>
-                                                            <span className="stat-value">{order.total_participants}</span>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                
-                                                <div className="order-timing">
-                                                    {order.status === 'scheduled' ? (
-                                                        <div className="scheduled-status">
-                                                            <span>הזמנה מתוזמנת - עדיין לא פתוחה להשתתפות</span>
-                                                        </div>
-                                                    ) : (
-                                                        <div className={`time-remaining ${order.is_ending_soon ? 'urgent' : ''}`}>
-                                                            {order.days_remaining > 0 ? (
-                                                                order.hours_remaining > 0 ? (
-                                                                    <span>נותרו {order.days_remaining} ימים, {order.hours_remaining} שעות ו-{order.minutes_remaining} דקות</span>
-                                                                ) : (
-                                                                    <span>נותרו {order.days_remaining} ימים ו-{order.minutes_remaining} דקות</span>
-                                                                )
-                                                            ) : order.hours_remaining > 0 ? (
-                                                                <span>נותרו {order.hours_remaining} שעות ו-{order.minutes_remaining} דקות</span>
-                                                            ) : order.minutes_remaining > 0 ? (
-                                                                <span>נותרו {order.minutes_remaining} דקות</span>
-                                                            ) : (
-                                                                <span>ההזמנה תיסגר בקרוב</span>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                    
-                                                    <div className="deadline">
-                                                        נסגרת: {new Date(order.deadline).toLocaleDateString('he-IL', {
-                                                            weekday: 'short',
-                                                            month: 'short',
-                                                            day: 'numeric',
-                                                            hour: '2-digit',
-                                                            minute: '2-digit'
-                                                        })}
-                                                    </div>
-                                                </div>
-                                                
-                                                {order.user_participating && order.status === 'open' && (
-                                                    <div className="user-participation">
-                                                        <div className="participation-actions">
-                                                            <button 
-                                                                className="btn-view-order"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleViewUserOrder(order);
-                                                                }}
-                                                            >
-                                                                👁️ צפה בהזמנה
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                
-                                                {order.status === 'scheduled' && (
-                                                    <div className="scheduled-notice">
-                                                        ההזמנה תיפתח אוטומטית בזמן המתוזמן
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </section>
+            {/* Main Content */}
+            <main className="relative z-10 container mx-auto px-4 py-6">
+                {/* Shop Header */}
+                <div className="mb-6">
+                    <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent text-center">
+                        קטלוג המוצרים
+                    </h2>
+                </div>
 
-                            {/* Product Selection */}
-                            {selectedOrder && selectedOrder.status === 'open' && (
-                                <section className="products-section">
-                                    <div className="section-header">
-                                        <h2 className="section-title">
-                                            בחירת מוצרים להזמנה: {selectedOrder.title}
-                                        </h2>
-                                        <div className="cart-summary">
-                                            <span className="cart-items">{getCartItemsCount()} פריטים</span>
-                                            <span className="cart-total">₪{calculateCartTotal()}</span>
-                                            {Object.keys(cart).length > 0 && (
-                                                <button 
-                                                    onClick={() => setShowParticipateModal(true)}
-                                                    className="btn-primary participate-btn"
-                                                >
-                                                    השתתף בהזמנה
-                                                </button>
-                                            )}
+                {/* Shop Status */}
+                <div>
+                {shopStatusLoading ? (
+                    <div className="text-center py-6">
+                        <div className="backdrop-blur-md bg-white/10 rounded-xl p-6 border border-white/20 shadow-xl">
+                            <div className="animate-spin h-8 w-8 border-4 border-blue-400 border-t-transparent rounded-full mx-auto"></div>
+                            <p className="text-white mt-4">בודק סטטוס החנות...</p>
+                        </div>
+                    </div>
+                ) : shopStatus && !shopStatus.is_open ? (
+                    <div className="mb-2">
+                        <div className="bg-red-50 border border-red-200 rounded px-2 py-2 text-center">
+                            <div className="text-lg font-medium text-red-600">🔒 החנות סגורה</div>
+                            <div className="text-sm text-red-500">החנות תפתח בעת פתיחת הזמנה קבוצתית</div>
+                        </div>
+                    </div>
+                ) : currentGeneralOrder ? (
+                    <div className="mb-6">
+                        {/* Compact General Order Banner */}
+                        <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-purple-600/20 via-blue-600/20 to-green-600/20 backdrop-blur-md border border-purple-400/30 shadow-lg">
+                            {/* Subtle animated border */}
+                            <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-purple-400/20 via-blue-400/20 to-green-400/20 animate-pulse"></div>
+                            
+                            {/* Main content - more compact */}
+                            <div className="relative p-4">
+                                {/* Header - smaller and inline */}
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center space-x-3">
+                                        <span className="text-2xl animate-pulse">🎯</span>
+                                        <div>
+                                            <h3 className="text-lg font-bold text-yellow-300">{currentGeneralOrder.title}</h3>
+                                            <p className="text-gray-300 text-sm">{currentGeneralOrder.description}</p>
                                         </div>
                                     </div>
                                     
-                                    {productsLoading ? (
-                                        <div className="loading-state">
-                                            <div className="spinner"></div>
-                                            <p>טוען מוצרים...</p>
+                                    {/* User status - compact */}
+                                    {hasPlacedOrder && (
+                                        <div className="bg-green-500/30 rounded-lg px-3 py-1 border border-green-400/50">
+                                            <span className="text-green-300 font-medium text-sm flex items-center">
+                                                <span className="mr-1">✅</span>
+                                                השתתפת
+                                            </span>
                                         </div>
-                                    ) : products.length > 0 ? (
-                                        <div className="products-grid">
-                                            {products.map((product) => (
-                                                <div key={product.id} className="product-card">
-                                                    <div className="product-image">
-                                                        {product.image_url ? (
-                                                            <img 
-                                                                src={product.image_url} 
-                                                                alt={product.name}
-                                                                onError={(e) => {
-                                                                    e.target.style.display = 'none';
-                                                                    e.target.nextSibling.style.display = 'flex';
-                                                                }}
-                                                            />
-                                                        ) : null}
-                                                        <div 
-                                                            className="product-placeholder"
-                                                            style={{display: product.image_url ? 'none' : 'flex'}}
+                                    )}
+                                </div>
+                                
+                                {/* Countdown timer - compact */}
+                                <div className="bg-red-500/20 rounded-lg p-3 border border-red-500/30">
+                                    <div className="flex items-center justify-center space-x-2">
+                                        <span className="text-lg">⏰</span>
+                                        <div className="text-center">
+                                            <span className="text-red-300 font-medium text-sm">סגירה: </span>
+                                            <span className="text-red-100 font-mono text-sm">
+                                                {new Date(currentGeneralOrder.deadline).toLocaleString('he-IL', {
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit'
+                                                })}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
+
+                {/* Products Grid */}
+                {productsLoading ? (
+                    <div className="text-center py-12">
+                        <div className="inline-flex items-center px-4 py-2 font-semibold leading-6 text-sm shadow rounded-md text-white bg-gradient-to-r from-blue-500 to-purple-500 transition ease-in-out duration-150">
+                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            טוען מוצרים...
+                        </div>
+                    </div>
+                ) : productsError ? (
+                    <div className="text-center py-12">
+                        <div className="backdrop-blur-md bg-red-500/10 rounded-xl p-8 border border-red-500/30 shadow-xl">
+                            <div className="mx-auto w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mb-4">
+                                <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                            <h3 className="text-lg font-semibold text-red-300 mb-2">שגיאה בטעינת המוצרים</h3>
+                            <p className="text-red-200 mb-4">{productsError}</p>
+                            <button 
+                                onClick={loadProducts}
+                                className="btn btn-primary"
+                            >
+                                נסה שוב
+                            </button>
+                        </div>
+                    </div>
+                ) : products.length === 0 ? (
+                    <div className="text-center py-12">
+                        <div className="backdrop-blur-md bg-white/90 rounded-xl p-8 border border-gray-200 shadow-xl">
+                            <div className="mx-auto w-16 h-16 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-full flex items-center justify-center mb-4">
+                                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0H4m16 0l-2-2m2 2l-2 2M4 13l2-2m-2 2l2 2" />
+                                </svg>
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-800 mb-2">אין מוצרים להצגה</h3>
+                            <p className="text-gray-600">
+                                אין מוצרים להצגה כרגע
+                            </p>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                        {products.map((product) => (
+                            <div key={product.id} className="group backdrop-blur-md bg-white/10 hover:bg-white/20 rounded-xl p-4 transition-all duration-300 border border-white/20 hover:border-white/40 shadow-lg hover:shadow-xl hover:scale-105">
+                                {/* Product Image */}
+                                <div className="w-full h-32 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-lg mb-3 flex items-center justify-center relative overflow-hidden">
+                                    <div className="absolute inset-0 bg-gradient-to-br from-transparent to-black/20"></div>
+                                    {product.image_url ? (
+                                        <img 
+                                            src={product.image_url} 
+                                            alt={product.name}
+                                            className="w-full h-full object-cover rounded-lg"
+                                        />
+                                    ) : (
+                                        <svg className="w-12 h-12 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" />
+                                        </svg>
+                                    )}
+                                </div>
+
+                                {/* Product Info */}
+                                <div className="space-y-3">
+                                    <div className="bg-white/90 backdrop-blur-sm rounded-lg p-3 border border-gray-200 shadow-lg hover:shadow-xl transition-all duration-300">
+                                        <h3 className="font-bold text-lg text-gray-800 text-center leading-snug tracking-wide hover:text-blue-600 transition-colors">
+                                            {product.name}
+                                        </h3>
+                                    </div>
+                                    
+                                    {/* Category Badge */}
+                                    {product.category && (
+                                        <span className="inline-block px-3 py-1 bg-blue-500/20 text-blue-800 text-sm rounded-full border border-blue-500/30 font-medium">
+                                            {product.category}
+                                        </span>
+                                    )}
+
+                                    {/* Price */}
+                                    <div className="text-center">
+                                        <div className="bg-white/90 backdrop-blur-sm rounded-lg p-2 border border-gray-200 shadow-md">
+                                            <div className="text-xl font-bold text-gray-800">
+                                                ₪{product.price}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Quantity Selector */}
+                                    <div className="flex items-center justify-center gap-2 bg-white/90 backdrop-blur-sm rounded-lg p-2 border border-gray-200 shadow-md">
+                                        <button
+                                            onClick={() => updateProductQuantity(product.id, getProductQuantity(product.id) - 1)}
+                                            disabled={!shopStatus || !shopStatus.is_open}
+                                            className={`w-8 h-8 btn text-xs font-bold rounded-md transition-all duration-200 ${
+                                                shopStatus && shopStatus.is_open 
+                                                    ? 'btn-outline hover:scale-105' 
+                                                    : 'btn-gray cursor-not-allowed opacity-50'
+                                            }`}
+                                        >
+                                            -
+                                        </button>
+                                        <span className="text-gray-800 font-bold min-w-[35px] text-center text-lg px-2">
+                                            {getProductQuantity(product.id)}
+                                        </span>
+                                        <button
+                                            onClick={() => updateProductQuantity(product.id, getProductQuantity(product.id) + 1)}
+                                            disabled={!shopStatus || !shopStatus.is_open}
+                                            className={`w-8 h-8 btn text-xs font-bold rounded-md transition-all duration-200 ${
+                                                shopStatus && shopStatus.is_open 
+                                                    ? 'btn-primary hover:scale-105' 
+                                                    : 'btn-gray cursor-not-allowed opacity-50'
+                                            }`}
+                                        >
+                                            +
+                                        </button>
+                                    </div>
+
+                                    {/* Add to Cart Button */}
+                                    {shopStatus && shopStatus.is_open ? (
+                                        <button
+                                            onClick={() => addToCart(product, getProductQuantity(product.id))}
+                                            className="w-full btn btn-primary text-sm py-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-300"
+                                        >
+                                            🛒 הוסף {getProductQuantity(product.id) > 1 ? `${getProductQuantity(product.id)} ` : ''}לסל
+                                        </button>
+                                    ) : (
+                                        <button
+                                            disabled
+                                            className="w-full btn btn-gray text-sm py-2 cursor-not-allowed opacity-50"
+                                            title="החנות סגורה כרגע"
+                                        >
+                                            🔒 החנות סגורה
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* Cart Sidebar */}
+                {showCart && (
+                    <div className="fixed inset-0 z-50">
+                        <div 
+                            className="fixed inset-0 bg-black/70 backdrop-blur-md"
+                            onClick={() => setShowCart(false)}
+                        ></div>
+                        
+                        <div className="fixed right-0 top-0 h-full w-96 bg-white border-l border-gray-200 shadow-2xl overflow-y-auto">
+                            <div className="p-6">
+                                <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200">
+                                    <h3 className="text-2xl font-bold text-gray-800">🛒 סל קניות</h3>
+                                    <button
+                                        onClick={() => setShowCart(false)}
+                                        style={{
+                                            backgroundColor: '#dc2626',
+                                            color: 'white',
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '50%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '18px',
+                                            fontWeight: 'bold',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+                                        }}
+                                        onMouseEnter={(e) => e.target.style.backgroundColor = '#b91c1c'}
+                                        onMouseLeave={(e) => e.target.style.backgroundColor = '#dc2626'}
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+
+                                {cart.length === 0 ? (
+                                    <div className="text-center py-12">
+                                        <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                            <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4m1.6 8L6 5H3m4 8a2 2 0 100 4 2 2 0 000-4zm10 0a2 2 0 100 4 2 2 0 000-4z" />
+                                            </svg>
+                                        </div>
+                                        <p className="text-gray-600 text-lg font-medium">הסל ריק</p>
+                                        <p className="text-gray-400 text-sm mt-2">הוסף מוצרים להתחלת קנייה</p>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <div className="space-y-4 mb-6">
+                                            {cart.map((item) => (
+                                                <div key={item.id} className="bg-gray-50 rounded-xl p-4 border border-gray-200 hover:border-gray-300 transition-all duration-300 shadow-sm hover:shadow-md">
+                                                    <div className="flex justify-between items-start mb-3">
+                                                        <h4 className="font-semibold text-gray-800 pr-2 flex-1">{item.name}</h4>
+                                                        <button
+                                                            onClick={() => removeFromCart(item.id)}
+                                                            className="text-red-500 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-all"
                                                         >
-                                                            💨
-                                                        </div>
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                            </svg>
+                                                        </button>
                                                     </div>
-                                                    
-                                                    <div className="product-info">
-                                                        <h3 className="product-name">{product.name}</h3>
-                                                        {product.description && (
-                                                            <p className="product-description">{product.description}</p>
-                                                        )}
-                                                        <div className="product-price">₪{product.price}</div>
-                                                    </div>
-                                                    
-                                                    <div className="product-actions">
-                                                        {cart[product.id] ? (
-                                                            <div className="quantity-controls">
-                                                                <button 
-                                                                    onClick={() => handleQuantityChange(product.id, cart[product.id] - 1)}
-                                                                    className="quantity-btn"
-                                                                >
-                                                                    -
-                                                                </button>
-                                                                <span className="quantity">{cart[product.id]}</span>
-                                                                <button 
-                                                                    onClick={() => handleQuantityChange(product.id, cart[product.id] + 1)}
-                                                                    className="quantity-btn"
-                                                                >
-                                                                    +
-                                                                </button>
-                                                                <button 
-                                                                    onClick={() => handleRemoveFromCart(product.id)}
-                                                                    className="remove-btn"
-                                                                    title="הסר מהעגלה"
-                                                                >
-                                                                    🗑️
-                                                                </button>
-                                                            </div>
-                                                        ) : (
-                                                            <button 
-                                                                onClick={() => handleAddToCart(product.id)}
-                                                                className="btn-secondary"
+                                                    <div className="flex justify-between items-center">
+                                                        <div className="flex items-center gap-3">
+                                                            <button
+                                                                onClick={() => updateCartQuantity(item.id, Math.max(0, item.quantity - 1))}
+                                                                className="w-10 h-10 bg-red-500 hover:bg-red-600 text-white text-xl font-bold rounded-lg hover:scale-105 transition-all shadow-md flex items-center justify-center"
                                                             >
-                                                                הוסף להזמנה
+                                                                −
                                                             </button>
-                                                        )}
+                                                            <span className="text-gray-800 font-bold min-w-[40px] text-center bg-white px-4 py-2 rounded-lg border-2 border-gray-300 text-lg">
+                                                                {item.quantity}
+                                                            </span>
+                                                            <button
+                                                                onClick={() => updateCartQuantity(item.id, item.quantity + 1)}
+                                                                className="w-10 h-10 bg-blue-500 hover:bg-blue-600 text-white text-xl font-bold rounded-lg hover:scale-105 transition-all shadow-md flex items-center justify-center"
+                                                            >
+                                                                +
+                                                            </button>
+                                                        </div>
+                                                        <div className="text-lg font-bold text-blue-600">
+                                                            ₪{(item.price * item.quantity).toFixed(2)}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
-                                    ) : (
-                                        <div className="empty-state">
-                                            <div className="empty-icon">📦</div>
-                                            <p>אין מוצרים זמינים כרגע</p>
-                                        </div>
-                                    )}
-                                </section>
-                            )}
-                        </div>
-                    )}
-                </div>
-            </main>
 
-            {/* Participate Modal */}
-            {showParticipateModal && (
-                <div className="modal-overlay" onClick={() => setShowParticipateModal(false)}>
-                    <div className="modal participate-modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h3>אישור השתתפות בהזמנה קבוצתית</h3>
-                            <button 
-                                className="modal-close"
-                                onClick={() => setShowParticipateModal(false)}
-                            >
-                                ✕
-                            </button>
-                        </div>
-                        
-                        <div className="modal-content">
-                            <div className="order-info">
-                                <h4>הזמנה: {selectedOrder?.title}</h4>
-                                <p>תאריך סגירה: {new Date(selectedOrder?.deadline).toLocaleDateString('he-IL', {
-                                    weekday: 'long',
-                                    year: 'numeric',
-                                    month: 'long',
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                })}</p>
-                            </div>
-                            
-                            <div className="cart-items">
-                                <h4>הפריטים שלך:</h4>
-                                {Object.entries(cart).map(([productId, quantity]) => {
-                                    const product = products.find(p => p.id === productId);
-                                    if (!product) return null;
-                                    
-                                    return (
-                                        <div key={productId} className="cart-item">
-                                            <span className="item-name">{product.name}</span>
-                                            <span className="item-quantity">כמות: {quantity}</span>
-                                            <span className="item-total">₪{product.price * quantity}</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                            
-                            <div className="total-summary">
-                                <div className="total-line">
-                                    <span>סה&quot;כ פריטים: {getCartItemsCount()}</span>
-                                </div>
-                                <div className="total-line main">
-                                    <span>סה&quot;כ לתשלום: ₪{calculateCartTotal()}</span>
-                                </div>
-                            </div>
-                            
-                            <div className="participation-note">
-                                <p>⚠️ לאחר האישור, ההשתתפות שלך תישמר במערכת</p>
-                                <p>📧 תקבל התראות על מצב ההזמנה באימייל</p>
-                            </div>
-                        </div>
-                        
-                        <div className="modal-actions">
-                            <button 
-                                onClick={() => setShowParticipateModal(false)}
-                                className="btn-secondary"
-                            >
-                                ביטול
-                            </button>
-                            <button 
-                                onClick={handleParticipate}
-                                className="btn-primary"
-                                disabled={participateLoading}
-                            >
-                                {participateLoading ? 'משתתף...' : 'אשר השתתפות'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* User Order Details Modal */}
-            {showUserOrderModal && selectedUserOrder && (
-                <div className="modal-overlay" onClick={() => setShowUserOrderModal(false)}>
-                    <div className="modal-content user-order-modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>פרטי ההשתתפות שלך</h2>
-                            <button 
-                                onClick={() => setShowUserOrderModal(false)}
-                                className="close-btn"
-                            >
-                                ✕
-                            </button>
-                        </div>
-                        
-                        <div className="modal-body">
-                            <div className="order-info">
-                                <h3>{selectedUserOrder.title}</h3>
-                                <p>{selectedUserOrder.description}</p>
-                                <div className="deadline-info">
-                                    <strong>תאריך סגירה: </strong>
-                                    {new Date(selectedUserOrder.deadline).toLocaleDateString('he-IL', {
-                                        weekday: 'long',
-                                        year: 'numeric',
-                                        month: 'long',
-                                        day: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                    })}
-                                </div>
-                            </div>
-
-                            {selectedUserOrder.participation && selectedUserOrder.participation.items && (
-                                <div className="user-items">
-                                    <h4>המוצרים שהזמנת:</h4>
-                                    <div className="items-list">
-                                        {selectedUserOrder.participation.items.map((item, index) => (
-                                            <div key={index} className="item-row">
-                                                <div className="item-details">
-                                                    <div className="item-name">{item.products?.name || 'מוצר לא ידוע'}</div>
-                                                    {item.products?.description && (
-                                                        <div className="item-description">{item.products.description}</div>
+                                        <div className="border-t border-gray-200 pt-6">
+                                            <div className="flex justify-between items-center mb-6">
+                                                <span className="text-gray-600 font-semibold text-lg">סה"כ:</span>
+                                                <span className="text-2xl font-bold text-blue-600">₪{getCartTotal()}</span>
+                                            </div>
+                                            
+                                            {shopStatus && shopStatus.is_open && currentGeneralOrder ? (
+                                                <div className="space-y-3">
+                                                    <button
+                                                        onClick={placeGeneralOrder}
+                                                        className="relative w-full py-4 px-6 text-lg font-bold text-white rounded-xl shadow-lg transform hover:scale-105 transition-all duration-300 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 border border-purple-400/50"
+                                                        disabled={cart.length === 0}
+                                                    >
+                                                        {/* Subtle animated background */}
+                                                        <div className="absolute inset-0 bg-gradient-to-r from-yellow-400/10 to-pink-400/10 rounded-xl animate-pulse"></div>
+                                                        
+                                                        {/* Button content */}
+                                                        <div className="relative flex items-center justify-center space-x-2">
+                                                            <span className="text-xl">{hasPlacedOrder ? '🔄' : '🚀'}</span>
+                                                            <span className="font-bold">
+                                                                {hasPlacedOrder ? 'עדכן הזמנה' : 'הצטרף להזמנה הקבוצתית!'}
+                                                            </span>
+                                                        </div>
+                                                    </button>
+                                                    
+                                                    {hasPlacedOrder && (
+                                                        <button
+                                                            onClick={cancelOrder}
+                                                            className="w-full py-3 px-6 text-base font-bold text-white rounded-xl shadow-lg transform hover:scale-105 transition-all duration-300 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 border border-red-400/50"
+                                                        >
+                                                            <div className="flex items-center justify-center gap-2">
+                                                                <span className="text-lg">🗑️</span>
+                                                                <span>בטל הזמנה</span>
+                                                            </div>
+                                                        </button>
                                                     )}
                                                 </div>
-                                                <div className="item-quantity">כמות: {item.quantity}</div>
-                                                <div className="item-price">₪{item.products?.price || 0} × {item.quantity}</div>
-                                                <div className="item-total">₪{(item.products?.price || 0) * item.quantity}</div>
+                                            ) : (
+                                                <div className="text-center">
+                                                    <button
+                                                        disabled
+                                                        className="btn btn-outline w-full text-lg py-4 opacity-50 cursor-not-allowed"
+                                                    >
+                                                        החנות סגורה כרגע
+                                                    </button>
+                                                    <p className="text-gray-500 text-sm mt-2">
+                                                        ההזמנה תהיה זמינה בהזמנה קבוצתית הבאה
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Orders History Modal */}
+                {showOrdersModal && (
+                    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowOrdersModal(false)}>
+                        <div className="bg-gradient-to-br from-gray-900 to-blue-900 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl border border-cyan-500/30" onClick={(e) => e.stopPropagation()}>
+                            {/* Modal Header */}
+                            <div className="bg-gradient-to-r from-cyan-600 to-blue-600 p-6 border-b border-cyan-500/30">
+                                <div className="flex justify-between items-center">
+                                    <h2 className="text-3xl font-bold text-white flex items-center gap-3">
+                                        <span className="text-4xl">📋</span>
+                                        <span>ההזמנות שלי</span>
+                                    </h2>
+                                    <button
+                                        onClick={() => setShowOrdersModal(false)}
+                                        className="text-white hover:text-red-400 transition-colors p-2 hover:bg-white/10 rounded-lg"
+                                    >
+                                        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Modal Body */}
+                            <div className="p-6 overflow-y-auto max-h-[calc(90vh-100px)]">
+                                {ordersLoading ? (
+                                    <div className="flex flex-col items-center justify-center py-20">
+                                        <div className="spinner mb-4"></div>
+                                        <p className="text-gray-300 text-lg">טוען הזמנות...</p>
+                                    </div>
+                                ) : userOrders.length === 0 ? (
+                                    <div className="text-center py-20">
+                                        <div className="w-32 h-32 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-6 border-4 border-cyan-500/30">
+                                            <svg className="w-16 h-16 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                            </svg>
+                                        </div>
+                                        <p className="text-2xl font-bold text-white mb-3">אין הזמנות עדיין</p>
+                                        <p className="text-gray-400 text-lg">ההזמנות שלך יופיעו כאן</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-6">
+                                        {userOrders.map((order) => (
+                                            <div key={order.id} className="bg-gradient-to-br from-gray-800/50 to-blue-900/30 rounded-xl p-6 border border-cyan-500/20 hover:border-cyan-500/40 transition-all duration-300 backdrop-blur-sm shadow-xl">
+                                                {/* Order Header */}
+                                                <div className="flex justify-between items-start mb-4 pb-4 border-b border-cyan-500/20">
+                                                    <div className="flex-1">
+                                                        <h3 className="text-2xl font-bold text-cyan-400 mb-2">
+                                                            {order.general_order?.title || 'הזמנה קבוצתית'}
+                                                        </h3>
+                                                        {order.general_order?.description && (
+                                                            <p className="text-gray-300 text-sm mb-2">{order.general_order.description}</p>
+                                                        )}
+                                                        <div className="flex flex-wrap gap-3 text-sm">
+                                                            <span className="text-gray-400">
+                                                                📅 {new Date(order.created_at).toLocaleDateString('he-IL')}
+                                                            </span>
+                                                            <span className="text-gray-400">
+                                                                🕐 {new Date(order.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col items-end gap-2">
+                                                        <span className={`px-4 py-2 rounded-full text-sm font-bold ${
+                                                            order.general_order?.status === 'open' 
+                                                                ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                                                                : 'bg-gray-500/20 text-gray-400 border border-gray-500/30'
+                                                        }`}>
+                                                            {order.general_order?.status === 'open' ? '🟢 פעילה' : '⚫ הסתיימה'}
+                                                        </span>
+                                                        {order.is_ending_soon && order.general_order?.status === 'open' && (
+                                                            <span className="px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-full text-xs font-bold border border-yellow-500/30 animate-pulse">
+                                                                ⏰ מסתיימת בקרוב
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Order Items */}
+                                                <div className="space-y-3 mb-4">
+                                                    <h4 className="text-lg font-semibold text-white mb-3">מוצרים בהזמנה:</h4>
+                                                    {order.items.map((item) => (
+                                                        <div key={item.id} className="bg-gray-900/40 rounded-lg p-4 border border-cyan-500/10 hover:bg-gray-900/60 transition-all">
+                                                            <div className="flex justify-between items-start mb-2">
+                                                                <div className="flex items-center gap-4 flex-1">
+                                                                    <div className="w-12 h-12 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 rounded-lg flex items-center justify-center text-2xl border border-cyan-500/30 flex-shrink-0">
+                                                                        🛍️
+                                                                    </div>
+                                                                    <div className="flex-1">
+                                                                        <h5 className="font-semibold text-white text-lg mb-1">{item.product?.name}</h5>
+                                                                        <div className="flex items-center gap-4 text-sm">
+                                                                            <span className="text-gray-400">כמות: <span className="text-white font-semibold">{item.quantity}</span></span>
+                                                                            <span className="text-gray-400">מחיר ליחידה: <span className="text-cyan-400 font-semibold">₪{(item.unit_price || 0).toFixed(2)}</span></span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="text-left flex-shrink-0 mr-4">
+                                                                    <div className="text-cyan-400 font-bold text-xl">₪{(item.total_price || 0).toFixed(2)}</div>
+                                                                    <div className="text-gray-500 text-xs text-right">סה"כ</div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                {/* Order Summary */}
+                                                <div className="bg-gradient-to-r from-cyan-900/30 to-blue-900/30 rounded-lg p-4 border-2 border-cyan-500/30">
+                                                    <div className="flex justify-between items-center">
+                                                        <div className="text-gray-300">
+                                                            <span className="font-semibold">סה"כ פריטים: </span>
+                                                            <span className="text-white font-bold">{order.total_items}</span>
+                                                        </div>
+                                                        <div className="text-left">
+                                                            <div className="text-sm text-gray-400 mb-1">סכום כולל:</div>
+                                                            <div className="text-3xl font-bold text-cyan-400">₪{(order.total_amount || 0).toFixed(2)}</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Reorder Button - Only show for closed/completed orders when shop is open */}
+                                                {shopStatus && shopStatus.is_open && currentGeneralOrder && 
+                                                 order.general_order?.status !== 'open' && (
+                                                    <div className="mt-4">
+                                                        <button
+                                                            onClick={() => handleReorder(order)}
+                                                            className="w-full py-3 px-6 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-cyan-500/50 flex items-center justify-center gap-3"
+                                                        >
+                                                            <span className="text-2xl">🔄</span>
+                                                            <span className="text-lg">הזמן מחדש</span>
+                                                        </button>
+                                                    </div>
+                                                )}
+
+                                                {/* Time Remaining (for active orders) */}
+                                                {order.general_order?.status === 'open' && !order.is_expired && (
+                                                    <div className="mt-4 bg-gradient-to-r from-green-900/20 to-blue-900/20 border border-green-500/30 rounded-lg p-4">
+                                                        <div className="flex items-center justify-center gap-3 text-green-400">
+                                                            <span className="text-2xl">⏳</span>
+                                                            <span className="font-semibold">
+                                                                נותרו {order.hours_remaining} שעות ו-{order.minutes_remaining} דקות
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
-                                    
-                                    <div className="order-total">
-                                        <strong>סה"כ להשתתפות: ₪{selectedUserOrder.participation.total_amount}</strong>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        
-                        <div className="modal-actions">
-                            <button 
-                                onClick={() => setShowUserOrderModal(false)}
-                                className="btn-secondary"
-                            >
-                                סגור
-                            </button>
-                            <button 
-                                onClick={() => handleCancelUserOrder(selectedUserOrder.id)}
-                                className="btn-danger"
-                            >
-                                בטל השתתפות
-                            </button>
+                                )}
+                            </div>
                         </div>
                     </div>
+                )}
                 </div>
-            )}
+            </main>
         </div>
     );
 }

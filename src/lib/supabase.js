@@ -113,9 +113,13 @@ export const getCurrentUserFromRequest = async (request) => {
     }
 
     // Simple token validation - in production, use JWT
-    const expectedToken = Buffer.from(user.id + user.username).toString('base64');
+    // Handle UTF-8 encoding for usernames with non-Latin characters
+    const expectedToken = Buffer.from(user.id + user.username, 'utf8').toString('base64');
     
     if (userToken !== expectedToken) {
+      console.log('[AUTH] Token mismatch for user:', user.username);
+      console.log('[AUTH] Expected:', expectedToken);
+      console.log('[AUTH] Received:', userToken);
       return null;
     }
 
@@ -136,7 +140,8 @@ export const getAuthHeaders = async () => {
   }
   
   // Simple token generation - in production, use JWT
-  const token = Buffer.from(user.id + user.username).toString('base64');
+  // Handle UTF-8 encoding for usernames with non-Latin characters
+  const token = Buffer.from(user.id + user.username, 'utf8').toString('base64');
   
   return {
     'x-user-id': user.id,

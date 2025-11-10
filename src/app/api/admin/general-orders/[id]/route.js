@@ -120,18 +120,41 @@ export async function PUT(request, context) {
 
     // If status changed to closed, close the shop
     if (status === 'closed') {
-      const { error: shopError } = await supabase
+      console.log('🔄 Closing shop because order status changed to closed...');
+      
+      // Get the shop status record first (there should only be one)
+      const { data: shopStatus, error: fetchShopError } = await supabase
         .from('shop_status')
-        .update({
-          is_open: false,
-          current_general_order_id: null,
-          message: 'החנות סגורה כרגע. נפתח בהזמנה קבוצתית הבאה.',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', 1);
+        .select('id, is_open, current_general_order_id')
+        .single();
 
-      if (shopError) {
-        console.error('Error closing shop:', shopError);
+      if (fetchShopError) {
+        console.error('❌ Error fetching shop status:', fetchShopError);
+      } else if (shopStatus) {
+        console.log('📊 Current shop status before closing:', {
+          id: shopStatus.id,
+          is_open: shopStatus.is_open,
+          current_order: shopStatus.current_general_order_id
+        });
+
+        const { data: updatedShop, error: shopError } = await supabase
+          .from('shop_status')
+          .update({
+            is_open: false,
+            current_general_order_id: null,
+            message: 'החנות סגורה כרגע. נפתח בהזמנה קבוצתית הבאה.',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', shopStatus.id)
+          .select();
+
+        if (shopError) {
+          console.error('❌ Error closing shop:', shopError);
+        } else {
+          console.log('✅ Shop closed successfully:', updatedShop);
+        }
+      } else {
+        console.error('❌ No shop status record found');
       }
 
       // Send push notification when order closes
@@ -364,25 +387,47 @@ export async function DELETE(request, context) {
 
     console.log(`✅ General order ${id} and all related data deleted successfully`);
 
-    // Close the shop if this was the current active order
+    // Close the shop after deleting the general order
     try {
-      const { error: shopError } = await supabase
+      console.log('🔄 Attempting to close shop after order deletion...');
+      
+      // Get the shop status record first (there should only be one)
+      const { data: shopStatus, error: fetchShopError } = await supabase
         .from('shop_status')
-        .update({
-          is_open: false,
-          current_general_order_id: null,
-          message: 'החנות סגורה כרגע. נפתח בהזמנה קבוצתית הבאה.',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', 1);
+        .select('id, current_general_order_id, is_open')
+        .single();
 
-      if (shopError) {
-        console.error('Error closing shop:', shopError);
+      if (fetchShopError) {
+        console.error('❌ Error fetching shop status:', fetchShopError);
+      } else if (shopStatus) {
+        console.log('📊 Current shop status:', {
+          id: shopStatus.id,
+          is_open: shopStatus.is_open,
+          current_order: shopStatus.current_general_order_id
+        });
+
+        // Update shop status to closed
+        const { data: updatedShop, error: shopError } = await supabase
+          .from('shop_status')
+          .update({
+            is_open: false,
+            current_general_order_id: null,
+            message: 'החנות סגורה כרגע. נפתח בהזמנה קבוצתית הבאה.',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', shopStatus.id)
+          .select();
+
+        if (shopError) {
+          console.error('❌ Error closing shop:', shopError);
+        } else {
+          console.log('✅ Shop closed successfully after order deletion:', updatedShop);
+        }
       } else {
-        console.log('✅ Shop closed successfully after order deletion');
+        console.error('❌ No shop status record found');
       }
     } catch (shopUpdateError) {
-      console.error('Shop status update error:', shopUpdateError);
+      console.error('❌ Shop status update error:', shopUpdateError);
     }
 
     return NextResponse.json({

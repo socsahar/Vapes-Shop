@@ -55,30 +55,14 @@ export async function GET(request) {
         let query = supabaseAdmin
             .from('orders')
             .select(`
-                id,
-                user_id,
-                general_order_id,
-                total_amount,
-                status,
-                created_at,
+                *,
                 general_orders (
-                    id,
-                    title,
-                    description,
-                    deadline,
-                    status,
-                    created_at
+                    *
                 ),
                 order_items (
-                    id,
-                    product_id,
-                    quantity,
-                    price,
+                    *,
                     products (
-                        name,
-                        description,
-                        image_url,
-                        price
+                        *
                     )
                 )
             `)
@@ -120,13 +104,17 @@ export async function GET(request) {
             return {
                 id: order.id,
                 general_order: order.general_orders,
-                items: order.order_items?.map(item => ({
-                    id: item.id,
-                    product: item.products,
-                    quantity: item.quantity,
-                    unit_price: item.price,
-                    total_price: item.price * item.quantity
-                })) || [],
+                items: order.order_items?.map(item => {
+                    // Get price from order_items.price, or fallback to product.price
+                    const unitPrice = item.price || item.products?.price || 0;
+                    return {
+                        id: item.id,
+                        product: item.products,
+                        quantity: item.quantity,
+                        unit_price: unitPrice,
+                        total_price: unitPrice * item.quantity
+                    };
+                }) || [],
                 total_amount: order.total_amount || 0,
                 total_items: order.order_items?.reduce((sum, item) => sum + item.quantity, 0) || 0,
                 hours_remaining: Math.max(0, Math.floor(time_remaining / (1000 * 60 * 60))),

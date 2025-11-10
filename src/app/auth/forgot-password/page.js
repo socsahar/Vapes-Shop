@@ -43,7 +43,7 @@ export default function ForgotPasswordPage() {
     return (
         <div className="min-h-screen flex items-center justify-center p-4 auth-page">
             {/* Forgot Password Form */}
-            <div className="relative w-full max-w-md">
+            <div className="relative w-full max-w-md animate-slide-up">
                 <div className="auth-card p-8">
                     {/* Header */}
                     <div className="text-center mb-8">
@@ -66,12 +66,12 @@ export default function ForgotPasswordPage() {
 
                     {/* Success Message - Show only after email sent */}
                     {emailSent ? (
-                        <div className="text-center space-y-6">
-                            <div className="bg-green-50 border border-green-200 text-green-800 px-6 py-4 rounded-lg">
-                                <div className="text-lg font-semibold mb-2">
+                        <div className="text-center space-y-6 animate-scale-in">
+                            <div className="glass-card p-6 neon-border">
+                                <div className="text-lg font-semibold mb-2 neon-text">
                                     ✅ האימייל נשלח בהצלחה!
                                 </div>
-                                <p className="text-sm">
+                                <p className="text-sm" style={{color: 'var(--text-secondary)'}}>
                                     {message}
                                 </p>
                             </div>

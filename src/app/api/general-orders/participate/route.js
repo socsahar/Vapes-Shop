@@ -369,3 +369,88 @@ export async function GET(request) {
         return NextResponse.json({ error: 'שגיאה בבדיקת השתתפות' }, { status: 500 });
     }
 }
+
+// DELETE /api/general-orders/participate - Cancel user's participation in a general order
+export async function DELETE(request) {
+    try {
+        // Get current user from JWT token
+        let user = await getCurrentUserFromRequest(request);
+        
+        // Fallback authentication for development
+        if (!user) {
+            const userId = request.headers.get('x-user-id');
+            const userToken = request.headers.get('x-user-token');
+            
+            console.log('[PARTICIPATE DELETE] Trying fallback auth for:', userId);
+            
+            if (userId && userToken) {
+                // Validate token
+                const { data: dbUser, error: userError } = await supabaseAdmin
+                    .from('users')
+                    .select('*')
+                    .eq('id', userId)
+                    .single();
+                
+                if (dbUser && !userError) {
+                    const expectedToken = Buffer.from(dbUser.id + dbUser.username, 'utf8').toString('base64');
+                    if (userToken === expectedToken) {
+                        const { password: _, ...userWithoutPassword } = dbUser;
+                        user = userWithoutPassword;
+                        console.log('[PARTICIPATE DELETE] Authenticated user:', user.username);
+                    }
+                }
+            }
+        }
+        
+        if (!user) {
+            console.log('[PARTICIPATE DELETE] No valid authentication found');
+            return NextResponse.json({ error: 'נדרשת התחברות' }, { status: 401 });
+        }
+        
+        console.log('[PARTICIPATE DELETE] Canceling order for user:', user.username);
+
+        const { searchParams } = new URL(request.url);
+        const general_order_id = searchParams.get('general_order_id');
+
+        if (!general_order_id) {
+            return NextResponse.json({ error: 'מזהה הזמנה קבוצתית נדרש' }, { status: 400 });
+        }
+
+        // Find user's order for this general order
+        const { data: userOrder, error: findError } = await supabaseAdmin
+            .from('orders')
+            .select('id')
+            .eq('general_order_id', general_order_id)
+            .eq('user_id', user.id)
+            .single();
+
+        if (findError) {
+            if (findError.code === 'PGRST116') {
+                return NextResponse.json({ error: 'לא נמצאה הזמנה לביטול' }, { status: 404 });
+            }
+            console.error('Database error finding order:', findError);
+            return NextResponse.json({ error: 'שגיאה בחיפוש הזמנה' }, { status: 500 });
+        }
+
+        // Delete the order (order_items will be deleted automatically due to CASCADE)
+        const { error: deleteError } = await supabaseAdmin
+            .from('orders')
+            .delete()
+            .eq('id', userOrder.id);
+
+        if (deleteError) {
+            console.error('Error deleting order:', deleteError);
+            return NextResponse.json({ error: 'שגיאה בביטול ההזמנה' }, { status: 500 });
+        }
+
+        console.log('✅ Order canceled successfully for user:', user.username);
+
+        return NextResponse.json({
+            message: 'ההזמנה בוטלה בהצלחה',
+            success: true
+        });
+    } catch (error) {
+        console.error('Error canceling order:', error);
+        return NextResponse.json({ error: 'שגיאה בביטול ההזמנה' }, { status: 500 });
+    }
+}

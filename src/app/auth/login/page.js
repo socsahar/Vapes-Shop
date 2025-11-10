@@ -54,7 +54,7 @@ export default function LoginPage() {
     return (
         <div className="min-h-screen flex items-center justify-center p-4 auth-page">
             {/* Login Form */}
-            <div className="relative w-full max-w-md">
+            <div className="relative w-full max-w-md animate-slide-up">
                 <div className="auth-card p-8">
                     {/* Header */}
                     <div className="text-center mb-8">

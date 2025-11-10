@@ -127,22 +127,18 @@ export default function RegisterPage() {
     if (success) {
         return (
             <div className="min-h-screen flex items-center justify-center p-4 auth-page">
-                {/* Background */}
-                <div className="fixed inset-0 bg-gradient-cosmic opacity-50"></div>
-                <div className="fixed inset-0 bg-pattern opacity-5"></div>
-                
-                <div className="relative w-full max-w-md">
+                <div className="relative w-full max-w-md animate-scale-in">
                     <div className="auth-card p-8 text-center">
                         <div className="mb-4">
-                            <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4 neon-glow">
+                                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                 </svg>
                             </div>
                         </div>
-                        <h2 className="text-2xl font-bold text-green-600 mb-2">רישום הושלם בהצלחה!</h2>
-                        <p className="text-gray-600 mb-4">החשבון שלך נוצר בהצלחה. מעביר אותך לעמוד הכניסה...</p>
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600 mx-auto"></div>
+                        <h2 className="text-2xl font-bold neon-text mb-2">רישום הושלם בהצלחה!</h2>
+                        <p className="text-secondary mb-4">החשבון שלך נוצר בהצלחה. מעביר אותך לעמוד הכניסה...</p>
+                        <div className="loading-spinner mx-auto"></div>
                     </div>
                 </div>
             </div>
@@ -151,19 +147,8 @@ export default function RegisterPage() {
 
     return (
         <div className="min-h-screen flex items-center justify-center p-4 auth-page">
-            {/* Background */}
-            <div className="fixed inset-0 bg-gradient-cosmic opacity-50"></div>
-            <div className="fixed inset-0 bg-pattern opacity-5"></div>
-            
-            {/* Floating particles */}
-            <div className="floating-particles">
-                {Array.from({ length: 20 }).map((_, i) => (
-                    <div key={i} className="particle"></div>
-                ))}
-            </div>
-
             {/* Register Form */}
-            <div className="relative w-full max-w-md">
+            <div className="relative w-full max-w-md animate-slide-up">
                 <div className="auth-card p-8">
                     {/* Header */}
                     <div className="text-center mb-8">
