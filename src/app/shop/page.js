@@ -628,6 +628,7 @@ export default function ShopPage() {
                         </div>
                     </div>
                 ) : null}
+                </div>
 
                 {/* Products Grid */}
                 {productsLoading ? (
@@ -1060,7 +1061,6 @@ export default function ShopPage() {
                         </div>
                     </div>
                 )}
-                </div>
             </main>
         </div>
     );

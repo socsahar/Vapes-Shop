@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { signUpWithPassword } from '../../../lib/supabase';
 
-export default function RegisterPage() {
+function RegisterForm() {
     const [formData, setFormData] = useState({
         username: '',
         email: '',
@@ -314,5 +314,17 @@ export default function RegisterPage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function RegisterPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="text-xl text-gray-300">טוען...</div>
+            </div>
+        }>
+            <RegisterForm />
+        </Suspense>
     );
 }
