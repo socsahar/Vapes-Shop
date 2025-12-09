@@ -80,7 +80,7 @@ export default function RootLayout({ children }) {
                   <p className="text-gray-400 text-sm">
                     פיתוח, עיצוב ואבטחה:{' '}
                     <a 
-                      href="https://saharndaniel.netlify.app/" 
+                      href="https://sanda-uinc.onrender.com/" 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="text-cyan-400 hover:text-cyan-300 font-semibold transition-all duration-300 underline decoration-cyan-400/50 hover:decoration-cyan-300 underline-offset-2 cursor-pointer"
