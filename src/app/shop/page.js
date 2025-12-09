@@ -8,6 +8,7 @@ import { getCurrentUser } from '../../lib/supabase';
 export default function ShopPage() {
     const router = useRouter();
     const [user, setUser] = useState(null);
+    const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
     const [loading, setLoading] = useState(true);
     const [products, setProducts] = useState([]);
     const [productsLoading, setProductsLoading] = useState(true);
@@ -27,16 +28,15 @@ export default function ShopPage() {
     useEffect(() => {
         const loadUser = async () => {
             const currentUser = await getCurrentUser();
-            if (!currentUser) {
-                router.push('/auth/login');
-                return;
-            }
+            // Allow browsing without login
             setUser(currentUser);
             setLoading(false);
             loadProducts();
             loadCart();
             loadShopStatus();
-            checkUserParticipation(currentUser.id);
+            if (currentUser) {
+                checkUserParticipation(currentUser.id);
+            }
         };
         loadUser();
     }, [router]);
@@ -116,6 +116,8 @@ export default function ShopPage() {
     const loadUserOrders = async () => {
         if (!user || !user.id) {
             console.error('No user available for loading orders');
+            alert('נדרשת התחברות כדי לצפות בהזמנות');
+            router.push('/auth/login?redirect=/shop');
             setOrdersLoading(false);
             return;
         }
@@ -144,11 +146,11 @@ export default function ShopPage() {
             } else {
                 const errorData = await response.json();
                 console.error('Failed to load orders:', response.status, errorData);
-                alert(errorData.error || 'שגיאה בטעינת ההזמנות');
+                showNotification(errorData.error || 'שגיאה בטעינת ההזמנות', 'error');
             }
         } catch (error) {
             console.error('Error loading orders:', error);
-            alert('שגיאה בטעינת ההזמנות');
+            showNotification('שגיאה בטעינת ההזמנות', 'error');
         } finally {
             setOrdersLoading(false);
         }
@@ -162,7 +164,7 @@ export default function ShopPage() {
     const handleReorder = async (order) => {
         // Check if shop is open
         if (!shopStatus || !shopStatus.is_open || !currentGeneralOrder) {
-            alert('לא ניתן להזמין כרגע - החנות סגורה');
+            showNotification('לא ניתן להזמין כרגע - החנות סגורה', 'warning');
             return;
         }
 
@@ -170,7 +172,7 @@ export default function ShopPage() {
             // Get current products to check availability
             const productsResponse = await fetch('/api/products');
             if (!productsResponse.ok) {
-                alert('שגיאה בטעינת המוצרים');
+                showNotification('שגיאה בטעינת המוצרים', 'error');
                 return;
             }
             
@@ -221,7 +223,7 @@ export default function ShopPage() {
 
                 // If no items are available at all
                 if (availableItems.length === 0) {
-                    alert('❌ אף אחד מהמוצרים בהזמנה הקודמת לא זמין כרגע');
+                    showNotification('אף אחד מהמוצרים בהזמנה הקודמת לא זמין כרגע', 'error');
                     return;
                 }
             }
@@ -235,14 +237,19 @@ export default function ShopPage() {
             
             // Show success message
             const message = missingItems.length > 0 
-                ? `✅ ${availableItems.length} מוצרים נוספו לעגלה\n⚠️ ${missingItems.length} מוצרים חסרים לא נוספו`
-                : `✅ ${availableItems.length} מוצרים נוספו לעגלה בהצלחה!`;
-            alert(message);
+                ? `${availableItems.length} מוצרים נוספו לעגלה. ${missingItems.length} מוצרים חסרים לא נוספו`
+                : `${availableItems.length} מוצרים נוספו לעגלה בהצלחה! 🎉`;
+            showNotification(message, missingItems.length > 0 ? 'warning' : 'success');
 
         } catch (error) {
             console.error('Error reordering:', error);
-            alert('שגיאה בביצוע ההזמנה מחדש');
+            showNotification('שגיאה בביצוע ההזמנה מחדש', 'error');
         }
+    };
+
+    const showNotification = (message, type = 'info') => {
+        setToast({ show: true, message, type });
+        setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 4000);
     };
 
     const saveCart = (cartItems) => {
@@ -253,6 +260,15 @@ export default function ShopPage() {
     };
 
     const addToCart = (product, quantity = 1) => {
+        // Check if user is logged in
+        if (!user) {
+            showNotification('נדרשת התחברות כדי להוסיף מוצרים לסל', 'warning');
+            setTimeout(() => {
+                router.push('/auth/login?redirect=/shop');
+            }, 2000);
+            return;
+        }
+
         const existingItem = cart.find(item => item.id === product.id);
         if (existingItem) {
             const newCart = cart.map(item =>
@@ -261,9 +277,11 @@ export default function ShopPage() {
                     : item
             );
             saveCart(newCart);
+            showNotification(`${product.name} עודכן בסל 🛒`, 'success');
         } else {
             const newCart = [...cart, { ...product, quantity }];
             saveCart(newCart);
+            showNotification(`${product.name} נוסף לסל 🛒`, 'success');
         }
         
         // Reset the product quantity after adding to cart
@@ -304,8 +322,21 @@ export default function ShopPage() {
     };
 
     const placeGeneralOrder = async () => {
-        if (!user || !currentGeneralOrder || cart.length === 0) {
-            alert('לא ניתן לבצע הזמנה כרגע');
+        // Check if user is logged in
+        if (!user) {
+            showNotification('נדרשת התחברות כדי להצטרף להזמנה קבוצתית', 'warning');
+            // Save cart to localStorage before redirect
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('cart', JSON.stringify(cart));
+            }
+            setTimeout(() => {
+                router.push('/auth/login?redirect=/shop');
+            }, 2000);
+            return;
+        }
+        
+        if (!currentGeneralOrder || cart.length === 0) {
+            showNotification('לא ניתן לבצע הזמנה כרגע', 'error');
             return;
         }
 
@@ -334,24 +365,24 @@ export default function ShopPage() {
 
             if (response.ok) {
                 const result = await response.json();
-                alert('הזמנה נשלחה בהצלחה!');
+                showNotification('הזמנה נשלחה בהצלחה! 🎉', 'success');
                 setHasPlacedOrder(true);
                 setShowCart(false);
                 // Refresh participation status
                 checkUserParticipation(user.id);
             } else {
                 const error = await response.json();
-                alert(error.error || 'שגיאה בשליחת ההזמנה');
+                showNotification(error.error || 'שגיאה בשליחת ההזמנה', 'error');
             }
         } catch (error) {
             console.error('Error placing general order:', error);
-            alert('שגיאה בשליחת ההזמנה');
+            showNotification('שגיאה בשליחת ההזמנה', 'error');
         }
     };
 
     const cancelOrder = async () => {
         if (!user || !currentGeneralOrder) {
-            alert('לא ניתן לבטל הזמנה כרגע');
+            showNotification('לא ניתן לבטל הזמנה כרגע', 'error');
             return;
         }
 
@@ -375,7 +406,7 @@ export default function ShopPage() {
             });
 
             if (response.ok) {
-                alert('✅ ההזמנה בוטלה בהצלחה!');
+                showNotification('ההזמנה בוטלה בהצלחה! ✅', 'success');
                 setHasPlacedOrder(false);
                 setCart([]);
                 setShowCart(false);
@@ -383,17 +414,22 @@ export default function ShopPage() {
                 checkUserParticipation(user.id);
             } else {
                 const error = await response.json();
-                alert(error.error || 'שגיאה בביטול ההזמנה');
+                showNotification(error.error || 'שגיאה בביטול ההזמנה', 'error');
             }
         } catch (error) {
             console.error('Error canceling order:', error);
-            alert('שגיאה בביטול ההזמנה');
+            showNotification('שגיאה בביטול ההזמנה', 'error');
         }
     };
 
     const handleLogout = () => {
         localStorage.removeItem('currentUser');
-        router.push('/auth/login');
+        // Stay on shop page after logout to allow browsing
+        setUser(null);
+        setCart([]);
+        setHasPlacedOrder(false);
+        setUserParticipation(null);
+        showNotification('התנתקת בהצלחה 👋', 'success');
     };
 
     if (loading) {
@@ -406,6 +442,20 @@ export default function ShopPage() {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 relative overflow-hidden">
+            {/* Custom Toast Notification */}
+            {toast.show && (
+                <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-slide-down">
+                    <div className={`px-6 py-4 rounded-lg shadow-2xl backdrop-blur-md border-2 ${
+                        toast.type === 'success' ? 'bg-green-500/90 border-green-300' :
+                        toast.type === 'error' ? 'bg-red-500/90 border-red-300' :
+                        toast.type === 'warning' ? 'bg-yellow-500/90 border-yellow-300' :
+                        'bg-blue-500/90 border-blue-300'
+                    }`}>
+                        <p className="text-white font-semibold text-lg text-center">{toast.message}</p>
+                    </div>
+                </div>
+            )}
+
             {/* Animated Background Elements */}
             <div className="absolute inset-0">
                 <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
@@ -431,55 +481,72 @@ export default function ShopPage() {
 
             {/* Header */}
             <header className="relative z-10 backdrop-blur-md bg-white/10 border-b border-white/20 shadow-lg">
-                <div className="container mx-auto px-4 py-4">
-                    <div className="flex items-center justify-between">
+                <div className="container mx-auto px-4 py-3">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                         <div className="flex items-center space-x-4 space-x-reverse">
                             <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
                                 הוייפ שופ
                             </h1>
-                            <span className="text-gray-400">|</span>
-                            <span className="text-gray-200">שלום {user?.full_name}</span>
+                            {user && (
+                                <>
+                                    <span className="text-gray-400 hidden sm:inline">|</span>
+                                    <span className="text-gray-200 text-sm sm:text-base">שלום {user.full_name}</span>
+                                </>
+                            )}
                         </div>
                         
-                        <nav className="flex items-center gap-4">
-                            <Link 
-                                href="/shop" 
-                                className="btn btn-primary"
-                            >
-                                🏪 חנות
-                            </Link>
-                            <button 
-                                onClick={handleShowOrders}
-                                className="btn btn-secondary"
-                            >
-                                📋 ההזמנות שלי
-                            </button>
-                            {user?.role === 'admin' && (
-                                <Link 
-                                    href="/admin" 
-                                    className="btn btn-primary"
-                                >
-                                    ⚙️ ניהול
-                                </Link>
+                        <nav className="flex items-center gap-2 flex-wrap justify-center sm:justify-end w-full sm:w-auto">
+                            {user ? (
+                                <>
+                                    <button 
+                                        onClick={handleShowOrders}
+                                        className="btn btn-secondary text-xs sm:text-sm px-3 py-2"
+                                    >
+                                        📋 <span className="hidden sm:inline">ההזמנות שלי</span>
+                                    </button>
+                                    {user.role === 'admin' && (
+                                        <Link 
+                                            href="/admin" 
+                                            className="btn btn-primary text-xs sm:text-sm px-3 py-2"
+                                        >
+                                            ⚙️ <span className="hidden sm:inline">ניהול</span>
+                                        </Link>
+                                    )}
+                                    <button
+                                        onClick={() => setShowCart(true)}
+                                        className="btn btn-primary relative text-xs sm:text-sm px-3 py-2"
+                                    >
+                                        🛒
+                                        {cart.length > 0 && (
+                                            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold animate-bounce">
+                                                {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                                            </span>
+                                        )}
+                                    </button>
+                                    <button 
+                                        onClick={handleLogout}
+                                        type="button"
+                                        className="btn btn-outline text-xs sm:text-sm px-3 py-2"
+                                    >
+                                        🚪 <span className="hidden sm:inline">יציאה</span>
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <Link 
+                                        href="/auth/login?redirect=/shop"
+                                        className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-2 flex-1 sm:flex-initial text-center"
+                                    >
+                                        🔑 התחברות
+                                    </Link>
+                                    <Link 
+                                        href="/auth/register?redirect=/shop"
+                                        className="btn btn-secondary text-xs sm:text-sm px-3 sm:px-4 py-2 flex-1 sm:flex-initial text-center"
+                                    >
+                                        📝 הרשמה
+                                    </Link>
+                                </>
                             )}
-                            <button
-                                onClick={() => setShowCart(true)}
-                                className="btn btn-primary relative"
-                            >
-                                🛒
-                                {cart.length > 0 && (
-                                    <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold animate-bounce">
-                                        {cart.reduce((sum, item) => sum + item.quantity, 0)}
-                                    </span>
-                                )}
-                            </button>
-                            <button 
-                                onClick={handleLogout}
-                                type="button"
-                                className="btn btn-outline"
-                            >
-                                🚪 יציאה
-                            </button>
                         </nav>
                     </div>
                 </div>
@@ -609,69 +676,54 @@ export default function ShopPage() {
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                         {products.map((product) => (
                             <div key={product.id} className="group backdrop-blur-md bg-white/10 hover:bg-white/20 rounded-xl p-4 transition-all duration-300 border border-white/20 hover:border-white/40 shadow-lg hover:shadow-xl hover:scale-105">
-                                {/* Product Image */}
-                                <div className="w-full h-32 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-lg mb-3 flex items-center justify-center relative overflow-hidden">
-                                    <div className="absolute inset-0 bg-gradient-to-br from-transparent to-black/20"></div>
-                                    {product.image_url ? (
-                                        <img 
-                                            src={product.image_url} 
-                                            alt={product.name}
-                                            className="w-full h-full object-cover rounded-lg"
-                                        />
-                                    ) : (
-                                        <svg className="w-12 h-12 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" />
-                                        </svg>
-                                    )}
-                                </div>
-
                                 {/* Product Info */}
                                 <div className="space-y-3">
-                                    <div className="bg-white/90 backdrop-blur-sm rounded-lg p-3 border border-gray-200 shadow-lg hover:shadow-xl transition-all duration-300">
-                                        <h3 className="font-bold text-lg text-gray-800 text-center leading-snug tracking-wide hover:text-blue-600 transition-colors">
+                                    {/* Product Name */}
+                                    <div className="text-center">
+                                        <h3 className="font-bold text-xl text-white mb-2 leading-tight">
                                             {product.name}
                                         </h3>
                                     </div>
                                     
                                     {/* Category Badge */}
                                     {product.category && (
-                                        <span className="inline-block px-3 py-1 bg-blue-500/20 text-blue-800 text-sm rounded-full border border-blue-500/30 font-medium">
-                                            {product.category}
-                                        </span>
+                                        <div className="text-center">
+                                            <span className="inline-block px-3 py-1 bg-blue-500/30 text-blue-200 text-sm rounded-full border border-blue-400/40 font-medium">
+                                                {product.category}
+                                            </span>
+                                        </div>
                                     )}
 
                                     {/* Price */}
-                                    <div className="text-center">
-                                        <div className="bg-white/90 backdrop-blur-sm rounded-lg p-2 border border-gray-200 shadow-md">
-                                            <div className="text-xl font-bold text-gray-800">
-                                                ₪{product.price}
-                                            </div>
+                                    <div className="text-center py-2">
+                                        <div className="text-3xl font-bold text-cyan-400">
+                                            ₪{product.price}
                                         </div>
                                     </div>
 
                                     {/* Quantity Selector */}
-                                    <div className="flex items-center justify-center gap-2 bg-white/90 backdrop-blur-sm rounded-lg p-2 border border-gray-200 shadow-md">
+                                    <div className="flex items-center justify-center gap-2">
                                         <button
                                             onClick={() => updateProductQuantity(product.id, getProductQuantity(product.id) - 1)}
-                                            disabled={!shopStatus || !shopStatus.is_open}
-                                            className={`w-8 h-8 btn text-xs font-bold rounded-md transition-all duration-200 ${
-                                                shopStatus && shopStatus.is_open 
-                                                    ? 'btn-outline hover:scale-105' 
-                                                    : 'btn-gray cursor-not-allowed opacity-50'
+                                            disabled={!user || !shopStatus || !shopStatus.is_open}
+                                            className={`w-8 h-8 text-lg font-bold rounded-full transition-all duration-200 ${
+                                                user && shopStatus && shopStatus.is_open 
+                                                    ? 'bg-red-500 hover:bg-red-600 text-white hover:scale-110' 
+                                                    : 'bg-gray-400 text-gray-600 cursor-not-allowed opacity-50'
                                             }`}
                                         >
-                                            -
+                                            −
                                         </button>
-                                        <span className="text-gray-800 font-bold min-w-[35px] text-center text-lg px-2">
+                                        <span className="text-white font-bold text-xl min-w-[40px] text-center">
                                             {getProductQuantity(product.id)}
                                         </span>
                                         <button
                                             onClick={() => updateProductQuantity(product.id, getProductQuantity(product.id) + 1)}
-                                            disabled={!shopStatus || !shopStatus.is_open}
-                                            className={`w-8 h-8 btn text-xs font-bold rounded-md transition-all duration-200 ${
-                                                shopStatus && shopStatus.is_open 
-                                                    ? 'btn-primary hover:scale-105' 
-                                                    : 'btn-gray cursor-not-allowed opacity-50'
+                                            disabled={!user || !shopStatus || !shopStatus.is_open}
+                                            className={`w-8 h-8 text-lg font-bold rounded-full transition-all duration-200 ${
+                                                user && shopStatus && shopStatus.is_open 
+                                                    ? 'bg-green-500 hover:bg-green-600 text-white hover:scale-110' 
+                                                    : 'bg-gray-400 text-gray-600 cursor-not-allowed opacity-50'
                                             }`}
                                         >
                                             +
@@ -679,7 +731,17 @@ export default function ShopPage() {
                                     </div>
 
                                     {/* Add to Cart Button */}
-                                    {shopStatus && shopStatus.is_open ? (
+                                    {!user ? (
+                                        <button
+                                            onClick={() => {
+                                                showNotification('נדרשת התחברות כדי להוסיף מוצרים לסל', 'warning');
+                                                setTimeout(() => router.push('/auth/login?redirect=/shop'), 2000);
+                                            }}
+                                            className="w-full btn btn-secondary text-sm py-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-300"
+                                        >
+                                            🔑 התחבר להוספה לסל
+                                        </button>
+                                    ) : shopStatus && shopStatus.is_open ? (
                                         <button
                                             onClick={() => addToCart(product, getProductQuantity(product.id))}
                                             className="w-full btn btn-primary text-sm py-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-300"

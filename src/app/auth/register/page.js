@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { signUpWithPassword } from '../../../lib/supabase';
 
@@ -18,6 +18,16 @@ export default function RegisterPage() {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const [redirectUrl, setRedirectUrl] = useState('/shop');
+
+    useEffect(() => {
+        // Get redirect parameter from URL
+        const redirect = searchParams.get('redirect');
+        if (redirect) {
+            setRedirectUrl(redirect);
+        }
+    }, [searchParams]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -78,7 +88,11 @@ export default function RegisterPage() {
 
             setSuccess(true);
             setTimeout(() => {
-                router.push('/auth/login');
+                // Redirect to login with the redirect parameter
+                const loginUrl = redirectUrl !== '/shop' 
+                    ? `/auth/login?redirect=${encodeURIComponent(redirectUrl)}`
+                    : '/auth/login';
+                router.push(loginUrl);
             }, 2000);
 
         } catch (err) {

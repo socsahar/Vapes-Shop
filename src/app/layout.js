@@ -74,16 +74,23 @@ export default function RootLayout({ children }) {
             </div>
             
             {/* Footer */}
-            <footer className="developer-footer">
-              <div className="developer-footer-content">
-                <div className="developer-credit">
-                  <div className="developer-info">
-                    <span className="developer-title">פיתוח, עיצוב ובניית המערכת:</span>
-                    <span className="developer-name">סהר מלול</span>
-                  </div>
-                  <div className="copyright">
-                    <span>© {new Date().getFullYear()} כל הזכויות שמורות</span>
-                  </div>
+            <footer className="relative z-10 backdrop-blur-md bg-white/5 border-t border-white/10 mt-auto">
+              <div className="container mx-auto px-4 py-4">
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <p className="text-gray-400 text-sm">
+                    פיתוח, עיצוב ואבטחה:{' '}
+                    <a 
+                      href="https://saharndaniel.netlify.app/" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-cyan-400 hover:text-cyan-300 font-semibold transition-all duration-300 underline decoration-cyan-400/50 hover:decoration-cyan-300 underline-offset-2 cursor-pointer"
+                    >
+                      סהר מלול
+                    </a>
+                  </p>
+                  <p className="text-gray-500 text-xs">
+                    © {new Date().getFullYear()} כל הזכויות שמורות
+                  </p>
                 </div>
               </div>
             </footer>

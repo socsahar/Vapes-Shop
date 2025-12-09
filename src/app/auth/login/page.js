@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { signInWithPassword } from '../../../lib/supabase';
 
@@ -13,6 +13,16 @@ export default function LoginPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const [redirectUrl, setRedirectUrl] = useState('/shop');
+
+    useEffect(() => {
+        // Get redirect parameter from URL
+        const redirect = searchParams.get('redirect');
+        if (redirect) {
+            setRedirectUrl(redirect);
+        }
+    }, [searchParams]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -28,11 +38,11 @@ export default function LoginPage() {
             }
 
             if (data?.user) {
-                // Redirect based on user role
-                if (data.user.role === 'admin') {
+                // Redirect based on user role or redirect parameter
+                if (data.user.role === 'admin' && redirectUrl === '/shop') {
                     router.push('/admin');
                 } else {
-                    router.push('/shop');
+                    router.push(redirectUrl);
                 }
             }
         } catch (err) {

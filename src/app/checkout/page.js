@@ -24,7 +24,8 @@ export default function CheckoutPage() {
             try {
                 const currentUser = await getCurrentUser();
                 if (!currentUser) {
-                    router.push('/auth/login');
+                    // Redirect to login with return URL to checkout
+                    router.push('/auth/login?redirect=/checkout');
                     return;
                 }
                 setUser(currentUser);
@@ -39,7 +40,7 @@ export default function CheckoutPage() {
                 setLoading(false);
             } catch (error) {
                 console.error('Error checking auth:', error);
-                router.push('/auth/login');
+                router.push('/auth/login?redirect=/checkout');
             }
         };
         
