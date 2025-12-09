@@ -606,6 +606,30 @@ export default function AdminPage() {
         showToast(`עדכון סטטוס עבור הזמנה #${order.id.slice(0, 8)}\nסטטוס נוכחי: ${order.status}`, 'info');
     };
 
+    const handleDeleteOrder = async (order) => {
+        if (!confirm(`❌ האם אתה בטוח שברצונך למחוק את ההזמנה של ${order.user?.full_name}?\n\nפעולה זו אינה ניתנת לביטול!`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/admin/orders/${order.id}`, {
+                method: 'DELETE',
+                headers: await getAuthHeaders()
+            });
+
+            if (response.ok) {
+                showToast('ההזמנה נמחקה בהצלחה! ✅', 'success');
+                fetchAllOrders();
+            } else {
+                const error = await response.json();
+                showToast(`שגיאה במחיקת ההזמנה: ${error.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting order:', error);
+            showToast('שגיאה במחיקת ההזמנה', 'error');
+        }
+    };
+
     // PDF Generation Functions
     const handleGenerateAdminPDF = async (order) => {
         try {
@@ -2070,6 +2094,16 @@ export default function AdminPage() {
                                                                         title="עדכן סטטוס"
                                                                     >
                                                                         ✏️
+                                                                    </button>
+                                                                    <button 
+                                                                        className="admin-btn-small delete"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleDeleteOrder(order);
+                                                                        }}
+                                                                        title="מחק הזמנה"
+                                                                    >
+                                                                        🗑️
                                                                     </button>
                                                                 </div>
                                                             </td>

@@ -1028,10 +1028,27 @@ export default function ShopPage() {
                                                     </div>
                                                 </div>
 
-                                                {/* Reorder Button - Only show for closed/completed orders when shop is open */}
-                                                {shopStatus && shopStatus.is_open && currentGeneralOrder && 
-                                                 order.general_order?.status !== 'open' && (
-                                                    <div className="mt-4">
+                                                {/* Action Buttons */}
+                                                <div className="mt-4 space-y-3">
+                                                    {/* Cancel Button - Only for active orders */}
+                                                    {order.general_order?.status === 'open' && !order.is_expired && (
+                                                        <button
+                                                            onClick={() => {
+                                                                setShowOrdersModal(false);
+                                                                if (confirm('❌ האם אתה בטוח שברצונך לבטל את ההזמנה?\n\nהפעולה תמחק את כל הפריטים מההזמנה הנוכחית.')) {
+                                                                    cancelOrder();
+                                                                }
+                                                            }}
+                                                            className="w-full py-3 px-6 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-red-500/50 flex items-center justify-center gap-3"
+                                                        >
+                                                            <span className="text-2xl">🗑️</span>
+                                                            <span className="text-lg">בטל הזמנה</span>
+                                                        </button>
+                                                    )}
+                                                    
+                                                    {/* Reorder Button - Only show for closed/completed orders when shop is open */}
+                                                    {shopStatus && shopStatus.is_open && currentGeneralOrder && 
+                                                     order.general_order?.status !== 'open' && (
                                                         <button
                                                             onClick={() => handleReorder(order)}
                                                             className="w-full py-3 px-6 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-cyan-500/50 flex items-center justify-center gap-3"
@@ -1039,8 +1056,8 @@ export default function ShopPage() {
                                                             <span className="text-2xl">🔄</span>
                                                             <span className="text-lg">הזמן מחדש</span>
                                                         </button>
-                                                    </div>
-                                                )}
+                                                    )}
+                                                </div>
 
                                                 {/* Time Remaining (for active orders) */}
                                                 {order.general_order?.status === 'open' && !order.is_expired && (
