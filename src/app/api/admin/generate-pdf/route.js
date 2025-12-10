@@ -333,6 +333,11 @@ function generateAdminReportHTML(order, participants) {
           table-layout: auto;
         }
         
+        tbody {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+        
         th {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: white;
@@ -345,8 +350,9 @@ function generateAdminReportHTML(order, participants) {
         
         .participant-row {
           transition: all 0.3s ease;
-          page-break-inside: avoid;
-          break-inside: avoid;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          -webkit-column-break-inside: avoid !important;
         }
         
         .participant-row:nth-child(even) {
@@ -362,8 +368,9 @@ function generateAdminReportHTML(order, participants) {
           border-bottom: 1px solid #e0e0e0;
           vertical-align: top;
           word-wrap: break-word;
-          page-break-inside: avoid;
-          break-inside: avoid;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          -webkit-column-break-inside: avoid !important;
         }
         
         .user-name {
@@ -382,8 +389,9 @@ function generateAdminReportHTML(order, participants) {
           max-height: none;
           overflow-y: visible;
           max-width: 300px;
-          page-break-inside: avoid;
-          break-inside: avoid;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          -webkit-column-break-inside: avoid !important;
         }
         
         .item-card {
@@ -397,8 +405,9 @@ function generateAdminReportHTML(order, participants) {
           justify-content: space-between;
           align-items: center;
           flex-wrap: wrap;
-          page-break-inside: avoid;
-          break-inside: avoid;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          -webkit-column-break-inside: avoid !important;
         }
         
         .item-name {

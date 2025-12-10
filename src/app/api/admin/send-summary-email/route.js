@@ -181,8 +181,11 @@ function generateAdminReportHTML(order, participants) {
   const participantRows = participants.map((participant, index) => {
     const itemsHTML = (participant.order_items || []).map(item => `
       <div class="item-card">
-        <span class="item-name">${item.products?.name || 'מוצר לא ידוע'}</span>
-        <span class="item-details">${item.products?.category || 'כללי'} | כמות: ${item.quantity}</span>
+        <div style="display: flex; flex-direction: column; gap: 4px; flex: 1;">
+          <span class="item-name">${item.products?.name || 'מוצר לא ידוע'}</span>
+          ${item.products?.category ? `<span class="item-category">${item.products.category}</span>` : ''}
+        </div>
+        <span class="item-details">כמות: ${item.quantity}</span>
       </div>
     `).join('');
 
@@ -287,6 +290,11 @@ function generateAdminReportHTML(order, participants) {
           table-layout: auto;
         }
         
+        tbody {
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        
         th {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: white;
@@ -299,6 +307,9 @@ function generateAdminReportHTML(order, participants) {
         
         .participant-row {
           transition: all 0.3s ease;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          -webkit-column-break-inside: avoid !important;
         }
         
         .participant-row:nth-child(even) {
@@ -314,6 +325,9 @@ function generateAdminReportHTML(order, participants) {
           border-bottom: 1px solid #e0e0e0;
           vertical-align: top;
           word-wrap: break-word;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          -webkit-column-break-inside: avoid !important;
         }
         
         .user-name {
@@ -332,6 +346,9 @@ function generateAdminReportHTML(order, participants) {
           max-height: none;
           overflow-y: visible;
           max-width: 300px;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          -webkit-column-break-inside: avoid !important;
         }
         
         .item-card {
@@ -345,6 +362,9 @@ function generateAdminReportHTML(order, participants) {
           justify-content: space-between;
           align-items: center;
           flex-wrap: wrap;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          -webkit-column-break-inside: avoid !important;
         }
         
         .item-name {
@@ -352,6 +372,16 @@ function generateAdminReportHTML(order, participants) {
           flex: 1;
           min-width: 120px;
           line-height: 1.3;
+        }
+        
+        .item-category {
+          display: inline-block;
+          background: rgba(255, 255, 255, 0.3);
+          color: white;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 0.75rem;
+          font-weight: 500;
         }
         
         .item-details {
@@ -654,6 +684,9 @@ function generateSupplierReportHTML(order, participants) {
         
         .product-row {
           transition: all 0.3s ease;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          -webkit-column-break-inside: avoid !important;
         }
         
         .product-row:nth-child(even) {
@@ -669,6 +702,9 @@ function generateSupplierReportHTML(order, participants) {
           border-bottom: 1px solid #e0e0e0;
           vertical-align: top;
           word-wrap: break-word;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          -webkit-column-break-inside: avoid !important;
         }
         
         .info-grid {
