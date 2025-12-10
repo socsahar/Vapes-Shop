@@ -189,10 +189,14 @@ export default function AdminPage() {
 
     const fetchStats = async () => {
         try {
+            console.log('[ADMIN] Fetching stats...');
             const response = await fetch('/api/admin/stats');
             if (response.ok) {
                 const data = await response.json();
+                console.log('[ADMIN] Stats received:', data);
                 setStats(data);
+            } else {
+                console.error('[ADMIN] Stats fetch failed:', response.status);
             }
         } catch (error) {
             console.error('Error fetching stats:', error);
@@ -1543,6 +1547,7 @@ export default function AdminPage() {
             // Set up auto-refresh every 30 seconds without showing loader
             interval = setInterval(() => {
                 fetchRecentActivity(false); // Silent refresh
+                fetchStats(); // Also refresh stats silently
             }, 30000);
         }
         
@@ -1718,6 +1723,14 @@ export default function AdminPage() {
                                     <h2 className="admin-page-title">דשבורד ניהול</h2>
                                     <p className="admin-page-subtitle">סקירה כללית של המערכת</p>
                                 </div>
+                                <button
+                                    type="button"
+                                    onClick={() => fetchStats()}
+                                    className="admin-btn-primary"
+                                    style={{ padding: '8px 16px', fontSize: '0.9rem' }}
+                                >
+                                    🔄 רענן סטטיסטיקות
+                                </button>
                             </div>
                             
                             {/* Stats Cards */}

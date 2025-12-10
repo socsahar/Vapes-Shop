@@ -40,23 +40,59 @@ export async function GET(request) {
         }
 
         // Calculate total revenue from CLOSED general orders
-        const { data: closedGeneralOrders, error: revenueError } = await supabaseAdmin
+        // Revenue comes from individual user orders linked to closed general orders
+        const { data: closedGeneralOrders, error: closedOrdersError } = await supabaseAdmin
             .from('general_orders')
-            .select('total_amount')
+            .select('id')
             .eq('status', 'closed');
 
-        let totalRevenue = 0;
-        if (!revenueError && closedGeneralOrders) {
-            totalRevenue = closedGeneralOrders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
+        if (closedOrdersError) {
+            console.error('[STATS] Error fetching closed general orders:', closedOrdersError);
         }
 
-        return NextResponse.json({
+        console.log('[STATS] Closed general orders:', closedGeneralOrders?.length || 0);
+
+        let totalRevenue = 0;
+        if (!closedOrdersError && closedGeneralOrders && closedGeneralOrders.length > 0) {
+            const closedOrderIds = closedGeneralOrders.map(order => order.id);
+            console.log('[STATS] Closed order IDs:', closedOrderIds);
+            
+            // Get all user orders for these closed general orders
+            const { data: userOrders, error: revenueError } = await supabaseAdmin
+                .from('orders')
+                .select('id, total_amount, general_order_id')
+                .in('general_order_id', closedOrderIds);
+
+            console.log('[STATS] User orders for closed general orders:', userOrders?.length || 0);
+            if (userOrders && userOrders.length > 0) {
+                console.log('[STATS] Sample user order:', userOrders[0]);
+            }
+
+            if (!revenueError && userOrders) {
+                totalRevenue = userOrders.reduce((sum, order) => {
+                    const amount = parseFloat(order.total_amount) || 0;
+                    console.log(`[STATS] Order ${order.id}: ₪${amount}`);
+                    return sum + amount;
+                }, 0);
+                console.log('[STATS] Total revenue calculated:', totalRevenue);
+            } else if (revenueError) {
+                console.error('[STATS] Error fetching user orders:', revenueError);
+            }
+        } else {
+            console.log('[STATS] No closed general orders found, revenue = 0');
+        }
+
+        const statsResult = {
             users: usersCount || 0,
             products: productsCount || 0,
             orders: ordersCount || 0,
             generalOrders: generalOrdersCount || 0,
             revenue: totalRevenue
-        });
+        };
+
+        console.log('[STATS] Final stats result:', statsResult);
+
+        return NextResponse.json(statsResult);
 
     } catch (error) {
         console.error('Stats API Error:', error);
