@@ -239,6 +239,24 @@ export async function POST(request) {
             } else {
                 console.log('Order confirmation email queued successfully');
                 
+                // Queue WhatsApp order confirmation
+                try {
+                    const { queueOrderConfirmation } = await import('../../../../BotVapes/whatsappMessages.js');
+                    const whatsappResult = await queueOrderConfirmation(
+                        user,
+                        generalOrder,
+                        createdItems,
+                        total_amount
+                    );
+                    if (whatsappResult.success) {
+                        console.log('✅ WhatsApp order confirmation queued successfully');
+                    } else {
+                        console.log(`⚠️ WhatsApp order confirmation not queued: ${whatsappResult.error}`);
+                    }
+                } catch (whatsappError) {
+                    console.error('⚠️ WhatsApp queueing error (non-blocking):', whatsappError.message);
+                }
+                
                 // Process queued emails directly (non-blocking)
                 setTimeout(async () => {
                     try {

@@ -42,7 +42,7 @@ export async function POST(request) {
     try {
         const product = await request.json();
 
-        const { name, description, price, image_url } = product;
+        const { name, description, price, category, image_url } = product;
 
         if (!name || !price) {
             return NextResponse.json(
@@ -57,7 +57,7 @@ export async function POST(request) {
                 name,
                 description: description || '',
                 price: parseFloat(price),
-                category: 'general', // Default category
+                category: category || null,
                 stock_quantity: 999, // Default large stock
                 image_url: image_url || null
             }])

@@ -134,6 +134,33 @@ export async function PUT(request) {
       );
     }
 
+    // If opening a general order, queue WhatsApp announcement
+    if (is_open && current_general_order_id) {
+      try {
+        // Get order details
+        const { data: order } = await supabase
+          .from('general_orders')
+          .select('*')
+          .eq('id', current_general_order_id)
+          .single();
+
+        if (order) {
+          // Dynamically import WhatsApp function
+          const { queueOrderOpenedAnnouncement } = await import('../../../../../../BotVapes/whatsappMessages.js');
+          const whatsappResult = await queueOrderOpenedAnnouncement(order);
+          
+          if (whatsappResult.success) {
+            console.log('✅ WhatsApp order opened announcement queued');
+          } else {
+            console.log('⚠️ WhatsApp announcement failed:', whatsappResult.error);
+          }
+        }
+      } catch (whatsappError) {
+        // Non-blocking - don't fail the request if WhatsApp fails
+        console.error('WhatsApp notification error:', whatsappError);
+      }
+    }
+
     return NextResponse.json({
       message: 'סטטוס החנות עודכן בהצלחה'
     });

@@ -55,6 +55,7 @@ export default function AdminPage() {
         name: '',
         description: '',
         price: '',
+        category: '',
         image_url: ''
     });
     const [productLoading, setProductLoading] = useState(false);
@@ -119,6 +120,14 @@ export default function AdminPage() {
     const [usersForNotificationLoading, setUsersForNotificationLoading] = useState(false);
     const [sendNotificationLoading, setSendNotificationLoading] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState(null);
+    
+    // Confirmation Modal State
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [confirmAction, setConfirmAction] = useState(null);
+    const [confirmTitle, setConfirmTitle] = useState('');
+    const [confirmMessage, setConfirmMessage] = useState('');
+    const [confirmButtonText, setConfirmButtonText] = useState('אישור');
+    const [confirmButtonClass, setConfirmButtonClass] = useState('admin-btn-primary');
     
     const router = useRouter();
 
@@ -264,6 +273,7 @@ export default function AdminPage() {
             name: '',
             description: '',
             price: '',
+            category: '',
             image_url: ''
         });
         setImagePreview('');
@@ -276,6 +286,7 @@ export default function AdminPage() {
             name: product.name || '',
             description: product.description || '',
             price: product.price || '',
+            category: product.category || '',
             image_url: product.image_url || ''
         });
         setImagePreview(product.image_url || '');
@@ -357,27 +368,81 @@ export default function AdminPage() {
         }
     };
 
-    const handleDeleteProduct = async (productId) => {
-        if (!confirm('האם אתה בטוח שברצונך למחוק את המוצר?')) {
-            return;
-        }
+    const showConfirmation = (title, message, onConfirm, buttonText = 'אישור', buttonClass = 'admin-btn-primary') => {
+        setConfirmTitle(title);
+        setConfirmMessage(message);
+        setConfirmAction(() => onConfirm);
+        setConfirmButtonText(buttonText);
+        setConfirmButtonClass(buttonClass);
+        setShowConfirmModal(true);
+    };
 
-        try {
-            const response = await fetch(`/api/products/${productId}`, {
-                method: 'DELETE'
-            });
-
-            if (response.ok) {
-                await fetchProducts(); // Refresh the products list
-                showToast('המוצר נמחק בהצלחה!', 'success');
-            } else {
-                const error = await response.json();
-                showToast(`שגיאה במחיקת המוצר: ${error.error}`, 'error');
-            }
-        } catch (error) {
-            console.error('Error deleting product:', error);
-            showToast('שגיאה במחיקת המוצר', 'error');
+    const handleConfirmAction = async () => {
+        setShowConfirmModal(false);
+        if (confirmAction) {
+            await confirmAction();
         }
+    };
+
+    const handleToggleProductStatus = async (product) => {
+        const newStatus = !product.is_active;
+        const action = newStatus ? 'להפעיל' : 'להשהות';
+        
+        showConfirmation(
+            `${action} מוצר`,
+            `האם אתה בטוח שברצונך ${action} את המוצר "${product.name}"?`,
+            async () => {
+                try {
+                    const response = await fetch(`/api/products/${product.id}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ is_active: newStatus })
+                    });
+
+                    if (response.ok) {
+                        await fetchProducts();
+                        showToast(newStatus ? 'המוצר הופעל בהצלחה!' : 'המוצר הושהה בהצלחה!', 'success');
+                    } else {
+                        const error = await response.json();
+                        showToast(`שגיאה בעדכון סטטוס המוצר: ${error.error}`, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error toggling product status:', error);
+                    showToast('שגיאה בעדכון סטטוס המוצר', 'error');
+                }
+            },
+            newStatus ? 'הפעל' : 'השהה',
+            newStatus ? 'admin-btn-primary' : 'bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold transition-all'
+        );
+    };
+
+    const handleDeleteProduct = async (productId, productName) => {
+        showConfirmation(
+            'מחיקת מוצר',
+            `האם אתה בטוח שברצונך למחוק את המוצר "${productName}"? פעולה זו אינה ניתנת לביטול!`,
+            async () => {
+                try {
+                    const response = await fetch(`/api/products/${productId}`, {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        await fetchProducts();
+                        showToast('המוצר נמחק בהצלחה!', 'success');
+                    } else {
+                        const error = await response.json();
+                        showToast(`שגיאה במחיקת המוצר: ${error.error}`, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error deleting product:', error);
+                    showToast('שגיאה במחיקת המוצר', 'error');
+                }
+            },
+            'מחק',
+            'bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-xl font-bold transition-all'
+        );
     };
 
     const handleDeleteUser = async (userId, userRole, userName) => {
@@ -1929,15 +1994,17 @@ export default function AdminPage() {
                                                 <tr>
                                                     <th>תמונה</th>
                                                     <th>שם המוצר</th>
+                                                    <th className="hide-mobile">קטגוריה</th>
                                                     <th className="hide-mobile">תיאור</th>
                                                     <th>מחיר</th>
+                                                    <th>סטטוס</th>
                                                     <th className="hide-mobile">תאריך יצירה</th>
                                                     <th>פעולות</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {products.map((product) => (
-                                                    <tr key={product.id}>
+                                                    <tr key={product.id} style={{ opacity: product.is_active ? 1 : 0.6 }}>
                                                         <td>
                                                             {product.image_url ? (
                                                                 <img 
@@ -1959,11 +2026,29 @@ export default function AdminPage() {
                                                         </td>
                                                         <td className="font-medium">{product.name}</td>
                                                         <td className="hide-mobile">
+                                                            {product.category ? (
+                                                                <span className="px-2 py-1 rounded text-xs font-semibold bg-blue-100 text-blue-800">
+                                                                    {product.category}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-gray-400 text-xs">לא צוין</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="hide-mobile">
                                                             <div className="max-w-xs truncate" title={product.description}>
                                                                 {product.description}
                                                             </div>
                                                         </td>
                                                         <td className="font-bold text-green-600">₪{product.price}</td>
+                                                        <td>
+                                                            <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                                                product.is_active 
+                                                                    ? 'bg-green-100 text-green-800' 
+                                                                    : 'bg-red-100 text-red-800'
+                                                            }`}>
+                                                                {product.is_active ? '✓ פעיל' : '✗ מושהה'}
+                                                            </span>
+                                                        </td>
                                                         <td className="hide-mobile">{new Date(product.created_at).toLocaleDateString('he-IL')}</td>
                                                         <td>
                                                             <div className="admin-table-actions">
@@ -1975,8 +2060,15 @@ export default function AdminPage() {
                                                                     ✏️
                                                                 </button>
                                                                 <button 
+                                                                    className={`admin-btn-small ${product.is_active ? 'warning' : 'success'}`}
+                                                                    onClick={() => handleToggleProductStatus(product)}
+                                                                    title={product.is_active ? 'השהה מוצר' : 'הפעל מוצר'}
+                                                                >
+                                                                    {product.is_active ? '⏸️' : '▶️'}
+                                                                </button>
+                                                                <button 
                                                                     className="admin-btn-small delete"
-                                                                    onClick={() => handleDeleteProduct(product.id)}
+                                                                    onClick={() => handleDeleteProduct(product.id, product.name)}
                                                                     title="מחק מוצר"
                                                                 >
                                                                     🗑️
@@ -3381,6 +3473,22 @@ export default function AdminPage() {
                             </div>
 
                             <div className="form-group">
+                                <label htmlFor="product_category">קטגוריה</label>
+                                <input
+                                    type="text"
+                                    id="product_category"
+                                    name="category"
+                                    value={productForm.category}
+                                    onChange={handleProductFormChange}
+                                    dir="auto"
+                                    placeholder="לדוגמה: Pod, נוזלים, אביזרים"
+                                />
+                                <small className="form-help">
+                                    הקטגוריה תוצג בחנות ובדוחות
+                                </small>
+                            </div>
+
+                            <div className="form-group">
                                 <label htmlFor="product_description">תיאור המוצר</label>
                                 <textarea
                                     id="product_description"
@@ -3972,6 +4080,45 @@ export default function AdminPage() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Confirmation Modal */}
+            {showConfirmModal && (
+                <div className="admin-modal-overlay" onClick={() => setShowConfirmModal(false)}>
+                    <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="admin-modal-header">
+                            <h3 className="admin-modal-title">{confirmTitle}</h3>
+                            <button 
+                                className="admin-modal-close"
+                                onClick={() => setShowConfirmModal(false)}
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <div className="admin-modal-body">
+                            <div className="confirm-modal-content">
+                                <div className="confirm-icon">⚠️</div>
+                                <p className="confirm-message">{confirmMessage}</p>
+                            </div>
+                        </div>
+                        <div className="admin-modal-actions">
+                            <button 
+                                type="button"
+                                className="admin-btn-secondary"
+                                onClick={() => setShowConfirmModal(false)}
+                            >
+                                ביטול
+                            </button>
+                            <button 
+                                type="button"
+                                className={confirmButtonClass}
+                                onClick={handleConfirmAction}
+                            >
+                                {confirmButtonText}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

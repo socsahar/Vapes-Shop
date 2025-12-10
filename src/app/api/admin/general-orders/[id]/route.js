@@ -338,6 +338,30 @@ export async function DELETE(request, context) {
       console.log(`📦 Deleted ${orderIds.length} orders`);
     }
 
+    // Delete related activity log entries
+    const { error: activityError } = await supabase
+      .from('activity_log')
+      .delete()
+      .eq('general_order_id', id);
+
+    if (activityError) {
+      console.log('Warning: Could not delete activity_log entries:', activityError);
+    } else {
+      console.log(`📊 Deleted activity_log entries for general order ${id}`);
+    }
+
+    // Delete related WhatsApp messages before deleting the general order
+    const { error: whatsappError } = await supabase
+      .from('whatsapp_messages')
+      .delete()
+      .eq('general_order_id', id);
+
+    if (whatsappError) {
+      console.log('Warning: Could not delete whatsapp_messages entries:', whatsappError);
+    } else {
+      console.log(`📱 Deleted whatsapp_messages entries for general order ${id}`);
+    }
+
     // Delete related email entries from both tables before deleting the general order
     const { error: emailQueueError } = await supabase
       .from('email_queue')

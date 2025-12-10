@@ -47,7 +47,9 @@ export default function ShopPage() {
             const response = await fetch('/api/products');
             if (response.ok) {
                 const data = await response.json();
-                setProducts(data.products || []);
+                // Filter to show only active products for customers
+                const activeProducts = (data.products || []).filter(product => product.is_active !== false);
+                setProducts(activeProducts);
             } else {
                 throw new Error('Failed to fetch products');
             }

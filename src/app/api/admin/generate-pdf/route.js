@@ -168,6 +168,7 @@ function generateAdminReportHTML(order, participants) {
     const itemsHTML = userItems.map(item => 
       `<div class="item-card">
         <span class="item-name">${item.products?.name || 'מוצר לא ידוע'}</span>
+        ${item.products?.category ? `<span class="item-category">${item.products.category}</span>` : ''}
         <span class="item-details">כמות: ${item.quantity} × ₪${item.unit_price}</span>
       </div>`
     ).join('');
@@ -277,6 +278,8 @@ function generateAdminReportHTML(order, participants) {
           border-radius: 15px;
           padding: 30px;
           border-left: 5px solid #667eea;
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
         
         .section h3 {
@@ -342,6 +345,8 @@ function generateAdminReportHTML(order, participants) {
         
         .participant-row {
           transition: all 0.3s ease;
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
         
         .participant-row:nth-child(even) {
@@ -357,6 +362,8 @@ function generateAdminReportHTML(order, participants) {
           border-bottom: 1px solid #e0e0e0;
           vertical-align: top;
           word-wrap: break-word;
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
         
         .user-name {
@@ -375,6 +382,8 @@ function generateAdminReportHTML(order, participants) {
           max-height: none;
           overflow-y: visible;
           max-width: 300px;
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
         
         .item-card {
@@ -388,6 +397,8 @@ function generateAdminReportHTML(order, participants) {
           justify-content: space-between;
           align-items: center;
           flex-wrap: wrap;
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
         
         .item-name {
@@ -395,6 +406,16 @@ function generateAdminReportHTML(order, participants) {
           flex: 1;
           min-width: 120px;
           line-height: 1.3;
+        }
+        
+        .item-category {
+          background: rgba(255, 255, 255, 0.25);
+          padding: 2px 8px;
+          border-radius: 12px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          margin: 0 6px;
+          white-space: nowrap;
         }
         
         .item-details {
@@ -746,6 +767,8 @@ function generateSupplierReportHTML(order, participants) {
         
         .product-row {
           transition: all 0.3s ease;
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
         
         .product-row:nth-child(even) {
@@ -762,6 +785,8 @@ function generateSupplierReportHTML(order, participants) {
           vertical-align: middle;
           word-wrap: break-word;
           max-width: 250px;
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
         
         .product-name {

@@ -14,6 +14,11 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
+import { 
+  queueOrderOpenedAnnouncement, 
+  queueReminderAnnouncement, 
+  queueOrderClosedAnnouncement 
+} from './BotVapes/whatsappMessages.js';
 
 // Load environment variables
 config({ path: '.env.local' });
@@ -455,20 +460,22 @@ async function autoCloseExpiredOrders() {
 
 /**
  * Send reminder emails for orders closing soon
+ * Supports: 1 hour and 30 minutes reminders
  */
 async function sendReminderEmails() {
   console.log('🔍 Checking for orders needing reminders...');
   
   const now = new Date();
   const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+  const thirtyMinutesFromNow = new Date(now.getTime() + 30 * 60 * 1000);
   const tenMinutesFromNow = new Date(now.getTime() + 10 * 60 * 1000);
 
-  // Find orders that need reminders (1 hour or 10 minutes before deadline)
+  // Find orders that need reminders (1 hour, 30 minutes, or 10 minutes before deadline)
   const { data: ordersNeedingReminders, error } = await supabase
     .from('general_orders')
     .select('*')
     .eq('status', 'open')
-    .or(`deadline.lte.${oneHourFromNow.toISOString()},deadline.lte.${tenMinutesFromNow.toISOString()}`)
+    .or(`deadline.lte.${oneHourFromNow.toISOString()},deadline.lte.${thirtyMinutesFromNow.toISOString()},deadline.lte.${tenMinutesFromNow.toISOString()}`)
     .gt('deadline', now.toISOString())
     .order('deadline', { ascending: true });
 
@@ -494,21 +501,44 @@ async function sendReminderEmails() {
   for (const order of ordersNeedingReminders) {
     try {
       const timeUntilDeadline = new Date(order.deadline) - now;
-      const hoursUntilDeadline = Math.round(timeUntilDeadline / (1000 * 60 * 60) * 100) / 100;
+      const minutesUntilDeadline = Math.round(timeUntilDeadline / (1000 * 60));
+      const hoursUntilDeadline = Math.round(minutesUntilDeadline / 60 * 100) / 100;
       
       // Determine reminder type based on time remaining
-      let reminderType;
-      if (hoursUntilDeadline <= 0.2) { // 12 minutes or less
+      let reminderType = null;
+      let whatsappReminderType = null;
+      
+      if (minutesUntilDeadline <= 12) { 
+        // 12 minutes or less - final reminder
         reminderType = 'final';
-      } else if (hoursUntilDeadline <= 1) {
+        whatsappReminderType = null; // Skip WhatsApp for this one
+      } else if (minutesUntilDeadline <= 35 && minutesUntilDeadline >= 25) { 
+        // Between 25-35 minutes - 30 minute reminder
+        reminderType = 'thirty_minutes';
+        whatsappReminderType = '30m';
+      } else if (minutesUntilDeadline <= 65 && minutesUntilDeadline >= 55) {
+        // Between 55-65 minutes - 1 hour reminder
         reminderType = 'one_hour';
+        whatsappReminderType = '1h';
       } else {
-        continue; // Skip if more than 1 hour away
+        continue; // Skip if not in any reminder window
       }
 
-      console.log(`📧 Sending ${reminderType} reminder for: ${order.title} (${hoursUntilDeadline} hours remaining)`);
+      console.log(`📧 Sending ${reminderType} reminder for: ${order.title} (${minutesUntilDeadline} minutes remaining)`);
       
       await sendReminderNotification(order, reminderType);
+      
+      // Queue WhatsApp reminder for 1h and 30m only
+      if (whatsappReminderType) {
+        console.log(`📱 Queueing WhatsApp ${whatsappReminderType} reminder...`);
+        const whatsappResult = await queueReminderAnnouncement(order, whatsappReminderType);
+        if (whatsappResult.success) {
+          console.log(`✅ WhatsApp ${whatsappReminderType} reminder queued successfully`);
+        } else {
+          console.log(`⚠️ WhatsApp reminder not queued: ${whatsappResult.error}`);
+        }
+      }
+      
       remindersSent++;
 
       // Log successful reminder
@@ -521,8 +551,10 @@ async function sendReminderEmails() {
         { 
           order_title: order.title,
           reminder_type: reminderType,
+          minutes_until_deadline: minutesUntilDeadline,
           hours_until_deadline: hoursUntilDeadline,
-          deadline: order.deadline
+          deadline: order.deadline,
+          whatsapp_queued: !!whatsappReminderType
         }
       );
 
@@ -592,6 +624,15 @@ async function sendOrderOpenNotifications(order) {
       `הזמנה קבוצתית חדשה נפתחה! לחץ כאן להזמנה`,
       { url: `${SITE_URL}/shop` }
     );
+    
+    // Queue WhatsApp announcement to group
+    console.log('📱 Queueing WhatsApp announcement for order opening...');
+    const whatsappResult = await queueOrderOpenedAnnouncement(order);
+    if (whatsappResult.success) {
+      console.log('✅ WhatsApp announcement queued successfully');
+    } else {
+      console.log(`⚠️ WhatsApp announcement not queued: ${whatsappResult.error}`);
+    }
     
   } catch (error) {
     console.error('❌ Error queuing opening notifications:', error);
@@ -794,6 +835,15 @@ async function sendOrderCloseNotifications(order) {
       { url: `${SITE_URL}/shop` }
     );
     
+    // Queue WhatsApp closure announcement to group
+    console.log('📱 Queueing WhatsApp closure announcement...');
+    const whatsappResult = await queueOrderClosedAnnouncement(order, successful.length);
+    if (whatsappResult.success) {
+      console.log('✅ WhatsApp closure announcement queued successfully');
+    } else {
+      console.log(`⚠️ WhatsApp closure announcement not queued: ${whatsappResult.error}`);
+    }
+    
     await logActivity(
       'cron_closure_emails',
       `Complete closure email system: ${successful.length} personalized + ${(allUsers?.length || 0) - successful.length} general + 2 admin reports for: ${orderName}`,
@@ -807,6 +857,7 @@ async function sendOrderCloseNotifications(order) {
         admin_reports: 2,
         system_notification: systemError ? 'failed' : 'queued',
         supplier_report: supplierError ? 'failed' : 'queued',
+        whatsapp_queued: whatsappResult.success,
         processed_at: new Date().toISOString()
       }
     );
@@ -872,8 +923,17 @@ async function sendReminderNotification(order, reminderType) {
       throw new Error(`Error fetching users: ${error?.message || 'No users found'}`);
     }
 
-    const reminderText = reminderType === 'final' ? 'נותרו פחות מ-12 דקות!' : 'נותרה פחות משעה!';
-    const priority = reminderType === 'final' ? 1 : 4;
+    let reminderText, priority;
+    if (reminderType === 'final') {
+      reminderText = 'נותרו פחות מ-12 דקות!';
+      priority = 1;
+    } else if (reminderType === 'thirty_minutes') {
+      reminderText = 'נותרו 30 דקות!';
+      priority = 2;
+    } else {
+      reminderText = 'נותרה פחות משעה!';
+      priority = 4;
+    }
 
     // Add emails to queue for each user
     const emailsToQueue = users.map(user => ({
@@ -898,11 +958,17 @@ async function sendReminderNotification(order, reminderType) {
 
     console.log(`📧 Queued ${emailsToQueue.length} ${reminderType} reminder emails`);
     
-    // Send push notification: 1 hour or 10 minutes reminder
+    // Send push notification based on reminder type
     if (reminderType === 'one_hour') {
       await sendPushNotification(
         `⏰ ${order.title}`,
         `נותרה פחות משעה! לחץ כאן להזמנה`,
+        { url: `${SITE_URL}/shop` }
+      );
+    } else if (reminderType === 'thirty_minutes') {
+      await sendPushNotification(
+        `🚨 ${order.title}`,
+        `נותרו 30 דקות! לחץ כאן להזמנה אחרונה`,
         { url: `${SITE_URL}/shop` }
       );
     } else if (reminderType === 'final') {

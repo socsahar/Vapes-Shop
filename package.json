@@ -20,7 +20,10 @@
     "test:scheduled-orders": "node test-scheduled-orders.js",
     "email:process": "node automated-email-processor.js",
     "email:monitor": "node email-monitor.js",
-    "email:stats": "node email-monitor.js --quick"
+    "email:stats": "node email-monitor.js --quick",
+    "whatsapp:auth": "node whatsapp-auth.js",
+    "whatsapp:listen": "node whatsapp-listener.js",
+    "test:whatsapp": "node test-whatsapp.js"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
@@ -29,6 +32,7 @@
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.57.2",
+    "@hapi/boom": "^10.0.1",
     "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -40,7 +44,11 @@
     "nodemailer": "^7.0.6",
     "puppeteer": "^24.19.0",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "@whiskeysockets/baileys": "^6.7.0",
+    "qrcode-terminal": "^0.12.0",
+    "pino": "^8.19.0",
+    "pino-pretty": "^11.0.0"
   },
   "engines": {
     "node": ">=18.0.0",
