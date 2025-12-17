@@ -14,10 +14,17 @@ const checkEnvVars = () => {
 
 // Configure fetch with SSL bypass for server environments
 const createFetchWithSSLBypass = () => {
-  // Only bypass SSL in server environment (Node.js) and only during development
+  // Only bypass SSL in server environment (Node.js)
   if (typeof window === 'undefined' && typeof process !== 'undefined') {
-    // Only set in development, never in production
-    if (process.env.NODE_ENV === 'development' && !process.env.RAILWAY_ENVIRONMENT) {
+    // Enable SSL bypass for local development (Windows/XAMPP) but NOT on Railway
+    // Check if we're on a production hosting platform
+    const isHostedProduction = process.env.RAILWAY_ENVIRONMENT || 
+                               process.env.VERCEL || 
+                               process.env.NETLIFY ||
+                               process.env.HEROKU;
+    
+    if (!isHostedProduction) {
+      // Local environment (Windows/XAMPP) - bypass SSL issues
       process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
     }
     
