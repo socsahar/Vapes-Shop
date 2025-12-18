@@ -48,7 +48,7 @@ export async function POST(request) {
         <p style="margin: 0; color: #333;"><strong>🖥️ שרת SMTP:</strong> Gmail (smtp.gmail.com)</p>
         <p style="margin: 10px 0 0 0; color: #333;"><strong>📧 כתובת שולח:</strong> ${process.env.GMAIL_USER}</p>
         <p style="margin: 10px 0 0 0; color: #333;"><strong>🔐 אבטחה:</strong> App Password</p>
-        <p style="margin: 10px 0 0 0; color: #333;"><strong>⏰ זמן שליחה:</strong> ${new Date().toLocaleString('he-IL')}</p>
+        <p style="margin: 10px 0 0 0; color: #333;"><strong>⏰ זמן שליחה:</strong> ${new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}</p>
         </div>
         <div style="background: #d4edda; border: 1px solid #c3e6cb; padding: 20px; border-radius: 8px; margin: 20px 0;">
         <p style="margin: 0; color: #155724; font-weight: bold;">✅ מערכת ההזמנות הקבוצתיות מוכנה לשליחת אימיילים!</p>

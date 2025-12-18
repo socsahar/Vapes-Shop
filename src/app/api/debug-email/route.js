@@ -160,7 +160,7 @@ export async function POST(request) {
                     <h2>🧪 בדיקת מערכת האימייל</h2>
                     <p>זהו מייל בדיקה מהוייפ שופ.</p>
                     <p>אם קיבלת מייל זה, המערכת עובדת כראוי!</p>
-                    <p>זמן שליחה: ${new Date().toLocaleString('he-IL')}</p>
+                    <p>זמן שליחה: ${new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}</p>
                 </div>
                 `
             })

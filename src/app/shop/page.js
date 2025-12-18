@@ -680,7 +680,8 @@ export default function ShopPage() {
                                                     month: 'short',
                                                     day: 'numeric',
                                                     hour: '2-digit',
-                                                    minute: '2-digit'
+                                                    minute: '2-digit',
+                                                    timeZone: 'Asia/Jerusalem'
                                                 })}
                                             </span>
                                         </div>

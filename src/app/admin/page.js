@@ -10,14 +10,20 @@ import { showToast } from '../../components/Toast';
 const formatDateTimeLocalInput = (date) => {
     if (!date) return '';
     
-    // Convert UTC date from database to local time for datetime-local input
+    // Convert UTC date from database to Israel time for datetime-local input
     const utcDate = new Date(date);
     
-    // Adjust for local timezone (accounts for daylight saving time automatically)
-    const localDate = new Date(utcDate.getTime() - (utcDate.getTimezoneOffset() * 60000));
+    // Convert to Israel timezone
+    const israelDate = new Date(utcDate.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
     
-    // Return in datetime-local format (YYYY-MM-DDTHH:MM)
-    return localDate.toISOString().substring(0, 16);
+    // Format for datetime-local input (YYYY-MM-DDTHH:MM)
+    const year = israelDate.getFullYear();
+    const month = String(israelDate.getMonth() + 1).padStart(2, '0');
+    const day = String(israelDate.getDate()).padStart(2, '0');
+    const hours = String(israelDate.getHours()).padStart(2, '0');
+    const minutes = String(israelDate.getMinutes()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
 };
 
 export default function AdminPage() {
@@ -961,15 +967,43 @@ export default function AdminPage() {
             
             const method = editingGeneralOrder ? 'PUT' : 'POST';
             
+            // Helper function to convert datetime-local input (treated as Israel time) to UTC
+            const convertIsraelTimeToUTC = (localTimeString) => {
+                // The datetime-local input gives us a string like "2025-12-18T15:35"
+                // We need to interpret this as Israel time and convert to UTC
+                
+                // Parse the components
+                const [datePart, timePart] = localTimeString.split('T');
+                const [year, month, day] = datePart.split('-');
+                const [hours, minutes] = timePart.split(':');
+                
+                // Create a date string in ISO format but treat it as Israel time
+                // by explicitly adding the Israel timezone offset
+                const dateInIsrael = new Date(`${year}-${month}-${day}T${hours}:${minutes}:00`);
+                
+                // Get Israel's UTC offset for this specific date (handles DST automatically)
+                // Create a formatter for Israel timezone
+                const israelTime = new Date(dateInIsrael.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+                const localTime = new Date(dateInIsrael.toLocaleString('en-US'));
+                
+                // Calculate the offset between local browser time and Israel time
+                const offset = localTime - israelTime;
+                
+                // Apply the offset to get UTC time
+                const utcTime = new Date(dateInIsrael.getTime() - offset);
+                
+                return utcTime.toISOString();
+            };
+            
             const payload = {
                 title: generalOrderForm.title,
                 description: generalOrderForm.description || null,
                 created_by: user.id,
-                // Convert local datetime to UTC for storage
-                deadline: new Date(generalOrderForm.deadline).toISOString(),
+                // Convert Israel time to UTC for storage
+                deadline: convertIsraelTimeToUTC(generalOrderForm.deadline),
                 // Set opening_time to UTC if scheduling, null otherwise
                 opening_time: generalOrderForm.schedule_opening && generalOrderForm.opening_time 
-                    ? new Date(generalOrderForm.opening_time).toISOString() 
+                    ? convertIsraelTimeToUTC(generalOrderForm.opening_time)
                     : null
             };
 
@@ -1551,7 +1585,7 @@ export default function AdminPage() {
                 fetchNotifications();
                 showToast(
                     notificationForm.scheduledAt 
-                        ? `🕐 התראה תוזמנה ל-${new Date(notificationForm.scheduledAt).toLocaleString('he-IL')}`
+                        ? `🕐 התראה תוזמנה ל-${new Date(notificationForm.scheduledAt).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}`
                         : `✅ התראה נשלחה ל-${result.notification?.sent_count || 0} משתמשים!`, 
                     'success'
                 );
@@ -2372,7 +2406,7 @@ export default function AdminPage() {
                                                                                     </div>
                                                                                     <div className="flex justify-between">
                                                                                         <span className="text-gray-600">תאריך הזמנה:</span>
-                                                                                        <span>{new Date(order.created_at).toLocaleString('he-IL')}</span>
+                                                                                        <span>{new Date(order.created_at).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}</span>
                                                                                     </div>
                                                                                     {order.general_order?.title && (
                                                                                         <div className="flex justify-between">
@@ -2547,11 +2581,12 @@ export default function AdminPage() {
                                                         <td>
                                                             {order.opening_time ? (
                                                                 <div className="text-sm">
-                                                                    {new Date(order.opening_time).toLocaleDateString('he-IL')}
+                                                                    {new Date(order.opening_time).toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem' })}
                                                                     <br />
                                                                     {new Date(order.opening_time).toLocaleTimeString('he-IL', {
                                                                         hour: '2-digit',
-                                                                        minute: '2-digit'
+                                                                        minute: '2-digit',
+                                                                        timeZone: 'Asia/Jerusalem'
                                                                     })}
                                                                 </div>
                                                             ) : (
@@ -2752,7 +2787,7 @@ export default function AdminPage() {
                                                         <div className="status-info-item">
                                                             <span className="status-label">הרצה אחרונה:</span>
                                                             <span className="status-value">
-                                                                {new Date(systemStatus.cronJobs.autoOrderOpening.lastRun).toLocaleString('he-IL')}
+                                                                {new Date(systemStatus.cronJobs.autoOrderOpening.lastRun).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}
                                                             </span>
                                                         </div>
                                                     )}
@@ -2767,7 +2802,7 @@ export default function AdminPage() {
                                                                 <div key={order.id} className="scheduled-item">
                                                                     <span className="scheduled-title">{order.title}</span>
                                                                     <span className="scheduled-time">
-                                                                        {new Date(order.scheduledFor).toLocaleString('he-IL')}
+                                                                        {new Date(order.scheduledFor).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}
                                                                     </span>
                                                                 </div>
                                                             ))}
@@ -2793,7 +2828,7 @@ export default function AdminPage() {
                                                         <div className="status-info-item">
                                                             <span className="status-label">הרצה אחרונה:</span>
                                                             <span className="status-value">
-                                                                {new Date(systemStatus.cronJobs.autoOrderClosing.lastRun).toLocaleString('he-IL')}
+                                                                {new Date(systemStatus.cronJobs.autoOrderClosing.lastRun).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}
                                                             </span>
                                                         </div>
                                                     )}
@@ -2808,7 +2843,7 @@ export default function AdminPage() {
                                                                 <div key={order.id} className="expired-item">
                                                                     <span className="expired-title">{order.title}</span>
                                                                     <span className="expired-time">
-                                                                        פג ב: {new Date(order.expiredAt).toLocaleString('he-IL')}
+                                                                        פג ב: {new Date(order.expiredAt).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}
                                                                     </span>
                                                                 </div>
                                                             ))}
@@ -2834,7 +2869,7 @@ export default function AdminPage() {
                                                         <div className="status-info-item">
                                                             <span className="status-label">הרצה אחרונה:</span>
                                                             <span className="status-value">
-                                                                {new Date(systemStatus.cronJobs.reminderEmails.lastRun).toLocaleString('he-IL')}
+                                                                {new Date(systemStatus.cronJobs.reminderEmails.lastRun).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}
                                                             </span>
                                                         </div>
                                                     )}
@@ -2862,7 +2897,7 @@ export default function AdminPage() {
                                                         <div className="status-info-item">
                                                             <span className="status-label">הרצה אחרונה:</span>
                                                             <span className="status-value">
-                                                                {new Date(systemStatus.cronJobs.emailQueue.lastRun).toLocaleString('he-IL')}
+                                                                {new Date(systemStatus.cronJobs.emailQueue.lastRun).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}
                                                             </span>
                                                         </div>
                                                     )}
@@ -2948,7 +2983,7 @@ export default function AdminPage() {
                                                                 <div className="email-timestamp">
                                                                     <span className="email-label">זמן:</span>
                                                                     <span className="email-value">
-                                                                        {new Date(email.timestamp).toLocaleString('he-IL')}
+                                                                        {new Date(email.timestamp).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}
                                                                     </span>
                                                                 </div>
                                                             </div>
@@ -3093,7 +3128,7 @@ export default function AdminPage() {
                                                             <p className="notification-body">{notification.body}</p>
                                                             <div className="notification-meta">
                                                                 <span className="notification-date">
-                                                                    {new Date(notification.created_at).toLocaleString('he-IL')}
+                                                                    {new Date(notification.created_at).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}
                                                                 </span>
                                                                 <span className="notification-audience">
                                                                     {notification.audience === 'all' && '🌐 כל המשתמשים'}
@@ -3143,7 +3178,7 @@ export default function AdminPage() {
                                                         <div className="stat-item">
                                                             <span className="stat-label">מתוזמן ל:</span>
                                                             <span className="stat-value scheduled-time">
-                                                                {new Date(notification.scheduled_at).toLocaleString('he-IL')}
+                                                                {new Date(notification.scheduled_at).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}
                                                             </span>
                                                         </div>
                                                     )}

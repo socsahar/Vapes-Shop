@@ -170,7 +170,7 @@ export default function WhatsAppAdminPage() {
                             {session.last_connection && (
                                 <div>
                                     <span className="font-medium">חיבור אחרון:</span>{' '}
-                                    {new Date(session.last_connection).toLocaleString('he-IL')}
+                                    {new Date(session.last_connection).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}
                                 </div>
                             )}
                             {session.error_message && (
@@ -342,7 +342,7 @@ export default function WhatsAppAdminPage() {
                                         {log.is_admin && <span className="text-purple-600"> 👨‍💼</span>}
                                     </div>
                                     <span className="text-gray-500 text-xs">
-                                        {new Date(log.created_at).toLocaleString('he-IL')}
+                                        {new Date(log.created_at).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}
                                     </span>
                                 </div>
                                 <div className="text-gray-700 mt-1">{log.description}</div>

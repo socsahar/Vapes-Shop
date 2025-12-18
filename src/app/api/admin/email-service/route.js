@@ -551,9 +551,9 @@ async function parseGeneralOrderData(emailBody, templateType) {
     participantCount,
     totalAmount,
     uniqueProducts,
-    createdAt: orderData.created_at ? new Date(orderData.created_at).toLocaleString('he-IL') : '',
-    closingTime: orderData.closes_at ? new Date(orderData.closes_at).toLocaleString('he-IL') : '',
-    closedAt: orderData.status === 'closed' ? new Date().toLocaleString('he-IL') : '',
+    createdAt: orderData.created_at ? new Date(orderData.created_at).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' }) : '',
+    closingTime: orderData.closes_at ? new Date(orderData.closes_at).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' }) : '',
+    closedAt: orderData.status === 'closed' ? new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' }) : '',
     creatorName: orderData.creator?.full_name || 'מנהל המערכת'
   };
 }
@@ -1061,7 +1061,7 @@ async function sendOrderClosedNotifications(body) {
       <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
         <h3 style="color: #2c3e50;">${order.title}</h3>
         <p><strong>תיאור:</strong> ${order.description || 'ללא תיאור'}</p>
-        <p><strong>תאריך סגירה:</strong> ${new Date().toLocaleString('he-IL')}</p>
+        <p><strong>תאריך סגירה:</strong> ${new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}</p>
       </div>
 
       <div style="background-color: #e8f5e8; padding: 15px; border-radius: 8px; margin: 20px 0;">
@@ -1536,7 +1536,7 @@ async function sendSupplierReport(body) {
       <div style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-bottom: 30px;">
         <h2 style="color: #495057; margin-top: 0;">פרטי ההזמנה</h2>
         <p><strong>שם ההזמנה:</strong> ${order.title || order.name}</p>
-        <p><strong>תאריך סגירה:</strong> ${new Date().toLocaleString('he-IL')}</p>
+        <p><strong>תאריך סגירה:</strong> ${new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}</p>
         <p><strong>סכום כולל:</strong> ₪${order.total_amount || 0}</p>
         <p><strong>מספר ספקים:</strong> ${Object.keys(supplierGroups).length}</p>
       </div>

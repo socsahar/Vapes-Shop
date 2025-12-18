@@ -275,8 +275,8 @@ async function processOrderConfirmation(emailLog) {
             
             // Status and timing
             '{{order_status}}': orderData.status === 'pending' ? 'ממתין לסגירת ההזמנה' : orderData.status,
-            '{{order_deadline}}': orderData.deadline ? new Date(orderData.deadline).toLocaleString('he-IL') : 'לא הוגדר',
-            '{{order_date}}': new Date().toLocaleDateString('he-IL'),
+            '{{order_deadline}}': orderData.deadline ? new Date(orderData.deadline).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' }) : 'לא הוגדר',
+            '{{order_date}}': new Date().toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem' }),
             
             // Content
             '{{order_items}}': itemsHtml,
