@@ -1803,6 +1803,30 @@ button:focus {
     transform: scale(1.15) rotate(-8deg);
 }
 
+.admin-stat-card.visitors::before {
+    content: '';
+    position: absolute;
+    top: -3px;
+    left: -3px;
+    right: -3px;
+    bottom: -3px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ec4899, #db2777);
+    z-index: -1;
+    opacity: 0.8;
+}
+
+.admin-stat-card.visitors .admin-stat-icon {
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.25), rgba(219, 39, 119, 0.15));
+    color: #9f1239;
+    box-shadow: 0 4px 12px rgba(236, 72, 153, 0.35);
+}
+
+.admin-stat-card.visitors:hover .admin-stat-icon {
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.35), rgba(219, 39, 119, 0.25));
+    transform: scale(1.15) rotate(8deg);
+}
+
 .admin-stat-content {
     text-align: center;
     direction: rtl;
@@ -5896,6 +5920,172 @@ button:focus {
 .copyright {
     font-size: 0.75rem;
     color: rgba(255, 255, 255, 0.5);
+}
+
+/* Visitor Stats Grid */
+.visitor-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    padding: 24px;
+}
+
+.visitor-stat-card {
+    position: relative;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.85));
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    padding: 32px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    border: 2px solid transparent;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+}
+
+.visitor-stat-card::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 20px;
+    padding: 2px;
+    background: linear-gradient(135deg, var(--card-gradient-start), var(--card-gradient-end));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    z-index: 0;
+}
+
+.visitor-stat-card:hover::before {
+    opacity: 1;
+}
+
+.visitor-stat-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.15);
+}
+
+.visitor-stat-card.today {
+    --card-gradient-start: #3b82f6;
+    --card-gradient-end: #2563eb;
+}
+
+.visitor-stat-card.week {
+    --card-gradient-start: #a855f7;
+    --card-gradient-end: #9333ea;
+}
+
+.visitor-stat-card.month {
+    --card-gradient-start: #10b981;
+    --card-gradient-end: #059669;
+}
+
+.visitor-stat-card.total {
+    --card-gradient-start: #f59e0b;
+    --card-gradient-end: #d97706;
+}
+
+.visitor-stat-icon {
+    font-size: 56px;
+    margin-bottom: 16px;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
+    animation: float 3s ease-in-out infinite;
+}
+
+.visitor-stat-card.today .visitor-stat-icon {
+    animation: float 3s ease-in-out infinite;
+}
+
+.visitor-stat-card.week .visitor-stat-icon {
+    animation: float 3.2s ease-in-out infinite 0.2s;
+}
+
+.visitor-stat-card.month .visitor-stat-icon {
+    animation: float 3.4s ease-in-out infinite 0.4s;
+}
+
+.visitor-stat-card.total .visitor-stat-icon {
+    animation: float 3.6s ease-in-out infinite 0.6s;
+}
+
+@keyframes float {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+.visitor-stat-content {
+    position: relative;
+    z-index: 1;
+}
+
+.visitor-stat-number {
+    font-size: 48px;
+    font-weight: 900;
+    background: linear-gradient(135deg, var(--card-gradient-start), var(--card-gradient-end));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+    margin-bottom: 12px;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.visitor-stat-label {
+    font-size: 16px;
+    font-weight: 600;
+    color: #475569;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.visitor-stat-card.today:hover {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(37, 99, 235, 0.1));
+}
+
+.visitor-stat-card.week:hover {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(147, 51, 234, 0.1));
+}
+
+.visitor-stat-card.month:hover {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.1));
+}
+
+.visitor-stat-card.total:hover {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.1));
+}
+
+@media (max-width: 768px) {
+    .visitor-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+        padding: 16px;
+    }
+    
+    .visitor-stat-card {
+        padding: 24px 16px;
+    }
+    
+    .visitor-stat-icon {
+        font-size: 40px;
+    }
+    
+    .visitor-stat-number {
+        font-size: 36px;
+    }
+    
+    .visitor-stat-label {
+        font-size: 14px;
+    }
 }
 
 /* Responsive footer */

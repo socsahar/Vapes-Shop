@@ -98,6 +98,15 @@ export default function AdminPage() {
     const [statusRefreshInterval, setStatusRefreshInterval] = useState(null);
     const [manualCronLoading, setManualCronLoading] = useState(false);
     
+    // WhatsApp Settings State
+    const [whatsappUrl, setWhatsappUrl] = useState('');
+    const [whatsappUrlLoading, setWhatsappUrlLoading] = useState(false);
+    const [whatsappUrlSaving, setWhatsappUrlSaving] = useState(false);
+    
+    // Visitor Stats State
+    const [visitorStats, setVisitorStats] = useState({ total: 0, today: 0, thisWeek: 0, thisMonth: 0 });
+    const [visitorStatsLoading, setVisitorStatsLoading] = useState(false);
+    
     // Notifications State
     const [notifications, setNotifications] = useState([]);
     const [notificationsLoading, setNotificationsLoading] = useState(false);
@@ -184,6 +193,21 @@ export default function AdminPage() {
             console.error('Error fetching users:', error);
         } finally {
             setUsersLoading(false);
+        }
+    };
+
+    const fetchVisitorStats = async () => {
+        try {
+            setVisitorStatsLoading(true);
+            const response = await fetch('/api/admin/visitor-stats');
+            if (response.ok) {
+                const data = await response.json();
+                setVisitorStats(data);
+            }
+        } catch (error) {
+            console.error('Error fetching visitor stats:', error);
+        } finally {
+            setVisitorStatsLoading(false);
         }
     };
 
@@ -1148,6 +1172,49 @@ export default function AdminPage() {
         }
     };
 
+    // WhatsApp Settings Functions
+    const fetchWhatsappUrl = async () => {
+        try {
+            setWhatsappUrlLoading(true);
+            const response = await fetch('/api/admin/settings/whatsapp-url');
+            if (response.ok) {
+                const data = await response.json();
+                setWhatsappUrl(data.url || '');
+            }
+        } catch (error) {
+            console.error('Error fetching WhatsApp URL:', error);
+        } finally {
+            setWhatsappUrlLoading(false);
+        }
+    };
+
+    const saveWhatsappUrl = async () => {
+        try {
+            setWhatsappUrlSaving(true);
+            const response = await fetch('/api/admin/settings/whatsapp-url', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                },
+                body: JSON.stringify({ url: whatsappUrl })
+            });
+
+            const data = await response.json();
+            
+            if (data.success) {
+                showToast('קישור WhatsApp עודכן בהצלחה', 'success');
+            } else {
+                showToast(data.error || 'שגיאה בעדכון הקישור', 'error');
+            }
+        } catch (error) {
+            console.error('Error saving WhatsApp URL:', error);
+            showToast('שגיאה בעדכון הקישור', 'error');
+        } finally {
+            setWhatsappUrlSaving(false);
+        }
+    };
+
     // Shop settings functions removed - using static settings in shop page
     // fetchShopSettings, saveShopSettings, addInstruction, removeInstruction, updateInstruction
     // are no longer needed since shop closure message is now static
@@ -1564,8 +1631,10 @@ export default function AdminPage() {
             fetchUsers();
         } else if (activeTab === 'dashboard') {
             fetchStats();
+            fetchVisitorStats();
             fetchRecentActivity(true); // Initial load with spinner
             // fetchShopSettings(); // Removed - shop settings now static
+            fetchWhatsappUrl();
         } else if (activeTab === 'products') {
             fetchProducts();
         } else if (activeTab === 'orders') {
@@ -1768,6 +1837,61 @@ export default function AdminPage() {
                                     <div className="admin-stat-content">
                                         <div className="admin-stat-number">₪{stats.revenue.toLocaleString('en-US')}</div>
                                         <div className="admin-stat-label">הכנסות</div>
+                                    </div>
+                                </div>
+                                <div className="admin-stat-card visitors">
+                                    <div className="admin-stat-icon">👁️</div>
+                                    <div className="admin-stat-content">
+                                        <div className="admin-stat-number">{visitorStatsLoading ? '...' : visitorStats.total.toLocaleString('en-US')}</div>
+                                        <div className="admin-stat-label">ביקורים באתר</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Visitor Stats Details */}
+                            <div className="admin-section">
+                                <div className="admin-section-header">
+                                    <h3 className="admin-section-title">
+                                        <span className="admin-section-icon">📊</span>
+                                        סטטיסטיקות ביקורים
+                                    </h3>
+                                    <button
+                                        type="button"
+                                        onClick={fetchVisitorStats}
+                                        disabled={visitorStatsLoading}
+                                        className="admin-btn-secondary text-sm"
+                                    >
+                                        {visitorStatsLoading ? '⏳ מעדכן...' : '🔄 רענן'}
+                                    </button>
+                                </div>
+                                <div className="visitor-stats-grid">
+                                    <div className="visitor-stat-card today">
+                                        <div className="visitor-stat-icon">📅</div>
+                                        <div className="visitor-stat-content">
+                                            <div className="visitor-stat-number">{visitorStatsLoading ? '...' : visitorStats.today}</div>
+                                            <div className="visitor-stat-label">היום</div>
+                                        </div>
+                                    </div>
+                                    <div className="visitor-stat-card week">
+                                        <div className="visitor-stat-icon">📆</div>
+                                        <div className="visitor-stat-content">
+                                            <div className="visitor-stat-number">{visitorStatsLoading ? '...' : visitorStats.thisWeek}</div>
+                                            <div className="visitor-stat-label">השבוע</div>
+                                        </div>
+                                    </div>
+                                    <div className="visitor-stat-card month">
+                                        <div className="visitor-stat-icon">📊</div>
+                                        <div className="visitor-stat-content">
+                                            <div className="visitor-stat-number">{visitorStatsLoading ? '...' : visitorStats.thisMonth}</div>
+                                            <div className="visitor-stat-label">החודש</div>
+                                        </div>
+                                    </div>
+                                    <div className="visitor-stat-card total">
+                                        <div className="visitor-stat-icon">🌐</div>
+                                        <div className="visitor-stat-content">
+                                            <div className="visitor-stat-number">{visitorStatsLoading ? '...' : visitorStats.total.toLocaleString('en-US')}</div>
+                                            <div className="visitor-stat-label">סה״כ ביקורים</div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -3264,6 +3388,96 @@ export default function AdminPage() {
                                                 <li>⚠️ קובץ הגיבוי מכיל נתונים רגישים</li>
                                                 <li>⚠️ אל תשתף את הקובץ בפומבי</li>
                                                 <li>🔄 השחזור ימחק נתונים קיימים!</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* WhatsApp Settings Section */}
+                            <div className="admin-section">
+                                <div className="admin-section-header">
+                                    <h3 className="admin-section-title">
+                                        <span className="admin-section-icon">💬</span>
+                                        הגדרות WhatsApp
+                                    </h3>
+                                    <p className="admin-section-subtitle">נהל את קישור קבוצת העדכונים ב-WhatsApp</p>
+                                </div>
+                                
+                                <div className="admin-settings-grid">
+                                    <div className="admin-settings-card">
+                                        <div className="admin-settings-card-header">
+                                            <h4>קישור קבוצת WhatsApp</h4>
+                                            <p>עדכן את הקישור לקבוצת העדכונים</p>
+                                        </div>
+                                        <div className="admin-settings-card-content">
+                                            {whatsappUrlLoading ? (
+                                                <div className="text-center py-4">
+                                                    <span className="spinner"></span>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <div className="form-group">
+                                                        <label htmlFor="whatsapp_url">קישור קבוצת WhatsApp</label>
+                                                        <input
+                                                            type="url"
+                                                            id="whatsapp_url"
+                                                            value={whatsappUrl}
+                                                            onChange={(e) => setWhatsappUrl(e.target.value)}
+                                                            placeholder="https://chat.whatsapp.com/..."
+                                                            className="admin-input"
+                                                            dir="ltr"
+                                                        />
+                                                        <small className="form-help">
+                                                            הזן את הקישור המלא לקבוצת WhatsApp (מתחיל ב-https://chat.whatsapp.com/)
+                                                        </small>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={saveWhatsappUrl}
+                                                            disabled={whatsappUrlSaving}
+                                                            className="admin-btn admin-btn-primary"
+                                                        >
+                                                            {whatsappUrlSaving ? (
+                                                                <>
+                                                                    <span className="spinner"></span>
+                                                                    שומר...
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    💾 שמור שינויים
+                                                                </>
+                                                            )}
+                                                        </button>
+                                                        {whatsappUrl && (
+                                                            <a
+                                                                href={whatsappUrl}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="admin-btn admin-btn-secondary"
+                                                            >
+                                                                🔗 בדוק קישור
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="admin-settings-card">
+                                        <div className="admin-settings-card-header">
+                                            <h4>📋 מידע</h4>
+                                            <p>הנחיות לשימוש</p>
+                                        </div>
+                                        <div className="admin-settings-card-content">
+                                            <ul className="settings-tips-list">
+                                                <li>✅ הקישור יופיע בראש דף החנות</li>
+                                                <li>✅ לקוחות יוכלו להצטרף לקבוצה בלחיצה</li>
+                                                <li>✅ מתאים לעדכונים על איסוף הזמנות</li>
+                                                <li>💡 יש ליצור קבוצת WhatsApp ולהעתיק את קישור ההזמנה</li>
+                                                <li>💡 הקישור צריך להתחיל ב-https://chat.whatsapp.com/</li>
                                             </ul>
                                         </div>
                                     </div>
