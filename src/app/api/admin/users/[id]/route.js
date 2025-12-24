@@ -123,102 +123,53 @@ export async function DELETE(request, { params }) {
 
         // Delete related records that don't have CASCADE or SET NULL
         // This is necessary because some foreign keys don't have proper ON DELETE clauses
+        console.log(`Starting deletion of related records for user ${id}...`);
         
-        // Delete activity logs (doesn't have ON DELETE CASCADE)
-        await supabaseAdmin
-            .from('activity_logs')
-            .delete()
-            .eq('user_id', id)
-            .then(() => console.log('Deleted activity_logs'))
-            .catch(err => console.log('No activity_logs or error:', err.message));
+        const cleanupOperations = [
+            { name: 'activity_logs', type: 'delete', field: 'user_id' },
+            { name: 'admin_activity_logs', type: 'delete', field: 'user_id' },
+            { name: 'general_order_participants', type: 'delete', field: 'user_id' },
+            { name: 'push_notifications', type: 'delete', field: 'created_by' },
+            { name: 'general_orders', type: 'nullify', field: 'created_by' },
+            { name: 'whatsapp_conversations', type: 'nullify', field: 'user_id' },
+            { name: 'whatsapp_messages', type: 'nullify', field: 'user_id' },
+            { name: 'orders', type: 'nullify', field: 'user_id' },
+            { name: 'cart_items', type: 'delete', field: 'user_id' },
+            { name: 'password_reset_tokens', type: 'delete', field: 'user_id' },
+            { name: 'user_logs', type: 'delete', field: 'user_id' },
+            { name: 'visitor_tracking', type: 'nullify', field: 'user_id' }
+        ];
 
-        // Delete admin activity logs
-        await supabaseAdmin
-            .from('admin_activity_logs')
-            .delete()
-            .eq('user_id', id)
-            .then(() => console.log('Deleted admin_activity_logs'))
-            .catch(err => console.log('No admin_activity_logs or error:', err.message));
-
-        // Delete general order participants
-        await supabaseAdmin
-            .from('general_order_participants')
-            .delete()
-            .eq('user_id', id)
-            .then(() => console.log('Deleted general_order_participants'))
-            .catch(err => console.log('No general_order_participants or error:', err.message));
-
-        // Delete push notifications created by user
-        await supabaseAdmin
-            .from('push_notifications')
-            .delete()
-            .eq('created_by', id)
-            .then(() => console.log('Deleted push_notifications'))
-            .catch(err => console.log('No push_notifications or error:', err.message));
-
-        // Set created_by to NULL for general_orders
-        await supabaseAdmin
-            .from('general_orders')
-            .update({ created_by: null })
-            .eq('created_by', id)
-            .then(() => console.log('Nullified general_orders.created_by'))
-            .catch(err => console.log('No general_orders or error:', err.message));
-
-        // Set user_id to NULL for whatsapp_conversations (has ON DELETE SET NULL)
-        await supabaseAdmin
-            .from('whatsapp_conversations')
-            .update({ user_id: null })
-            .eq('user_id', id)
-            .then(() => console.log('Nullified whatsapp_conversations'))
-            .catch(err => console.log('No whatsapp_conversations or error:', err.message));
-
-        // Set user_id to NULL for whatsapp_messages (has ON DELETE SET NULL)
-        await supabaseAdmin
-            .from('whatsapp_messages')
-            .update({ user_id: null })
-            .eq('user_id', id)
-            .then(() => console.log('Nullified whatsapp_messages'))
-            .catch(err => console.log('No whatsapp_messages or error:', err.message));
-
-        // Keep orders but set user_id to null for historical data
-        await supabaseAdmin
-            .from('orders')
-            .update({ user_id: null })
-            .eq('user_id', id)
-            .then(() => console.log('Nullified orders.user_id'))
-            .catch(err => console.log('No orders or error:', err.message));
-
-        // Delete cart items (should have CASCADE but we'll be explicit)
-        await supabaseAdmin
-            .from('cart_items')
-            .delete()
-            .eq('user_id', id)
-            .then(() => console.log('Deleted cart_items'))
-            .catch(err => console.log('No cart_items or error:', err.message));
-
-        // Delete password reset tokens (has ON DELETE CASCADE)
-        await supabaseAdmin
-            .from('password_reset_tokens')
-            .delete()
-            .eq('user_id', id)
-            .then(() => console.log('Deleted password_reset_tokens'))
-            .catch(err => console.log('No password_reset_tokens or error:', err.message));
-
-        // Delete user logs
-        await supabaseAdmin
-            .from('user_logs')
-            .delete()
-            .eq('user_id', id)
-            .then(() => console.log('Deleted user_logs'))
-            .catch(err => console.log('No user_logs or error:', err.message));
-
-        // Set user_id to NULL for visitor tracking records
-        await supabaseAdmin
-            .from('visitor_tracking')
-            .update({ user_id: null })
-            .eq('user_id', id)
-            .then(() => console.log('Nullified visitor_tracking'))
-            .catch(err => console.log('No visitor_tracking or error:', err.message));
+        for (const operation of cleanupOperations) {
+            try {
+                if (operation.type === 'delete') {
+                    const { error } = await supabaseAdmin
+                        .from(operation.name)
+                        .delete()
+                        .eq(operation.field, id);
+                    
+                    if (error) {
+                        console.log(`⚠️ ${operation.name}: ${error.message}`);
+                    } else {
+                        console.log(`✅ ${operation.name}: deleted`);
+                    }
+                } else {
+                    const { error } = await supabaseAdmin
+                        .from(operation.name)
+                        .update({ [operation.field]: null })
+                        .eq(operation.field, id);
+                    
+                    if (error) {
+                        console.log(`⚠️ ${operation.name}: ${error.message}`);
+                    } else {
+                        console.log(`✅ ${operation.name}: nullified`);
+                    }
+                }
+            } catch (err) {
+                console.log(`⚠️ ${operation.name}: ${err.message}`);
+                // Continue with other operations even if one fails
+            }
+        }
 
         // Finally, delete the user
         const { error } = await supabaseAdmin

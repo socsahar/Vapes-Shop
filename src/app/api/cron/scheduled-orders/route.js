@@ -24,13 +24,27 @@ export async function GET(request) {
         console.log('🤖 [CRON] Starting General Order Automation Cron with Activity Logging...');
         const overallStartTime = Date.now();
         
-        // Run all automation tasks in parallel
-        const results = await Promise.allSettled([
+        // Check if we should run daily cleanup (only once per day at 2 AM)
+        const now = new Date();
+        const hour = now.getHours();
+        const shouldRunCleanup = hour === 2; // Run at 2 AM
+        
+        // Build tasks list
+        const tasks = [
             runWithLogging('auto_open_orders', autoOpenFutureOrders),
             runWithLogging('auto_close_orders', autoCloseExpiredOrders),
             runWithLogging('send_reminder_emails', sendReminderEmails),
             runWithLogging('process_email_queue', processEmailQueue)
-        ]);
+        ];
+        
+        // Add cleanup task if it's 2 AM
+        if (shouldRunCleanup) {
+            console.log('🧹 Running daily inactive users cleanup...');
+            tasks.push(runWithLogging('cleanup_inactive_users', cleanupInactiveUsers));
+        }
+        
+        // Run all automation tasks in parallel
+        const results = await Promise.allSettled(tasks);
         
         const totalDuration = Date.now() - overallStartTime;
         
@@ -460,6 +474,84 @@ async function queueReminderEmails(order, reminderType) {
   } catch (error) {
     console.error(`⚠️ Failed to queue ${reminderType} reminder emails:`, error);
   }
+}
+
+/**
+ * Clean up inactive users (90+ days without login)
+ * Runs once per day at 2 AM
+ */
+async function cleanupInactiveUsers() {
+  console.log('🧹 Checking for inactive users to clean up...');
+  
+  const INACTIVE_DAYS = 90; // 3 months
+  const now = new Date();
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - INACTIVE_DAYS);
+  const cutoffISO = cutoffDate.toISOString();
+  
+  // Find inactive users (exclude admins)
+  const { data: inactiveUsers, error: fetchError } = await supabase
+    .from('users')
+    .select('id, username, full_name, email, last_login, role, created_at')
+    .neq('role', 'admin')
+    .or(`last_login.is.null,last_login.lt.${cutoffISO}`);
+
+  if (fetchError) {
+    throw new Error(`Error fetching inactive users: ${fetchError.message}`);
+  }
+
+  if (!inactiveUsers || inactiveUsers.length === 0) {
+    console.log('✅ No inactive users found');
+    return { deleted: 0 };
+  }
+
+  console.log(`🗑️ Found ${inactiveUsers.length} inactive user(s) to delete`);
+
+  let successCount = 0;
+
+  for (const user of inactiveUsers) {
+    try {
+      const lastLoginDate = user.last_login 
+        ? new Date(user.last_login).toLocaleDateString('he-IL')
+        : 'Never';
+      
+      console.log(`   Deleting: ${user.full_name} (${user.email}) - Last login: ${lastLoginDate}`);
+
+      // Delete related records
+      await supabase.from('activity_logs').delete().eq('user_id', user.id);
+      await supabase.from('admin_activity_logs').delete().eq('user_id', user.id);
+      await supabase.from('general_order_participants').delete().eq('user_id', user.id);
+      await supabase.from('push_notifications').delete().eq('created_by', user.id);
+      await supabase.from('general_orders').update({ created_by: null }).eq('created_by', user.id);
+      await supabase.from('whatsapp_conversations').update({ user_id: null }).eq('user_id', user.id);
+      await supabase.from('whatsapp_messages').update({ user_id: null }).eq('user_id', user.id);
+      await supabase.from('orders').update({ user_id: null }).eq('user_id', user.id);
+      await supabase.from('cart_items').delete().eq('user_id', user.id);
+      await supabase.from('password_reset_tokens').delete().eq('user_id', user.id);
+      await supabase.from('user_logs').delete().eq('user_id', user.id);
+      await supabase.from('visitor_tracking').update({ user_id: null }).eq('user_id', user.id);
+
+      // Delete the user
+      const { error: deleteError } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', user.id);
+
+      if (deleteError) {
+        throw new Error(deleteError.message);
+      }
+
+      successCount++;
+      console.log(`   ✅ Deleted successfully`);
+
+    } catch (error) {
+      console.error(`   ❌ Failed to delete ${user.email}:`, error.message);
+    }
+  }
+
+  console.log(`✅ Cleanup summary: ${successCount}/${inactiveUsers.length} users deleted`);
+
+  return { deleted: successCount, total: inactiveUsers.length };
 }
 
 // Also support POST method for compatibility
