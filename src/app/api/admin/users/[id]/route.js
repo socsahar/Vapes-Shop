@@ -121,11 +121,59 @@ export async function DELETE(request, { params }) {
             );
         }
 
-        // For now, allow deletion of any user (remove admin protection temporarily)
-        // Since we have the constraint issue, we'll allow admins to delete any user
-        // You can add more sophisticated logic here later
+        // Delete related records that don't have CASCADE or SET NULL
+        // This is necessary because some foreign keys don't have proper ON DELETE clauses
+        
+        // Delete activity logs (doesn't have ON DELETE CASCADE)
+        await supabaseAdmin
+            .from('activity_logs')
+            .delete()
+            .eq('user_id', id);
 
-        // Delete user from database
+        // Delete admin activity logs
+        await supabaseAdmin
+            .from('admin_activity_logs')
+            .delete()
+            .eq('user_id', id);
+
+        // Set user_id to NULL for whatsapp_conversations (has ON DELETE SET NULL)
+        await supabaseAdmin
+            .from('whatsapp_conversations')
+            .update({ user_id: null })
+            .eq('user_id', id);
+
+        // Set user_id to NULL for whatsapp_messages (has ON DELETE SET NULL)
+        await supabaseAdmin
+            .from('whatsapp_messages')
+            .update({ user_id: null })
+            .eq('user_id', id);
+
+        // Delete orders (has ON DELETE CASCADE in schema.sql but might not be applied)
+        // We'll keep orders but set user_id to null for historical data
+        await supabaseAdmin
+            .from('orders')
+            .update({ user_id: null })
+            .eq('user_id', id);
+
+        // Delete cart items (should have CASCADE but we'll be explicit)
+        await supabaseAdmin
+            .from('cart_items')
+            .delete()
+            .eq('user_id', id);
+
+        // Delete password reset tokens (has ON DELETE CASCADE)
+        await supabaseAdmin
+            .from('password_reset_tokens')
+            .delete()
+            .eq('user_id', id);
+
+        // Delete visitor tracking records (has ON DELETE SET NULL)
+        await supabaseAdmin
+            .from('visitor_tracking')
+            .update({ user_id: null })
+            .eq('user_id', id);
+
+        // Finally, delete the user
         const { error } = await supabaseAdmin
             .from('users')
             .delete()
@@ -134,7 +182,7 @@ export async function DELETE(request, { params }) {
         if (error) {
             console.error('Error deleting user:', error);
             return NextResponse.json(
-                { error: 'Failed to delete user' },
+                { error: `Failed to delete user: ${error.message}` },
                 { status: 500 }
             );
         }
@@ -147,7 +195,7 @@ export async function DELETE(request, { params }) {
     } catch (error) {
         console.error('Delete user API Error:', error);
         return NextResponse.json(
-            { error: 'Internal server error' },
+            { error: `Internal server error: ${error.message}` },
             { status: 500 }
         );
     }
