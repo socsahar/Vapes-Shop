@@ -118,6 +118,11 @@ export default function AdminPage() {
     const [notificationsLoading, setNotificationsLoading] = useState(false);
     const [notificationStats, setNotificationStats] = useState({});
     const [showNotificationModal, setShowNotificationModal] = useState(false);
+    
+    // Inactive Users Warning State
+    const [inactiveUsersWarning, setInactiveUsersWarning] = useState([]);
+    const [showInactiveUsersModal, setShowInactiveUsersModal] = useState(false);
+    const [inactiveUsersLoading, setInactiveUsersLoading] = useState(false);
     const [notificationForm, setNotificationForm] = useState({
         title: '',
         message: '',
@@ -1339,6 +1344,55 @@ export default function AdminPage() {
         });
     };
 
+    // Inactive Users Warning Functions
+    const fetchInactiveUsersWarning = async () => {
+        try {
+            const response = await fetch('/api/admin/cleanup-inactive?days=60');
+            const data = await response.json();
+            
+            if (data.success && data.users && data.users.length > 0) {
+                setInactiveUsersWarning(data.users);
+            } else {
+                setInactiveUsersWarning([]);
+            }
+        } catch (error) {
+            console.error('Error fetching inactive users warning:', error);
+            setInactiveUsersWarning([]);
+        }
+    };
+
+    const deleteInactiveUsersNow = async () => {
+        if (!confirm('האם אתה בטוח שברצונך למחוק את כל המשתמשים הלא פעילים עכשיו?')) {
+            return;
+        }
+
+        try {
+            setInactiveUsersLoading(true);
+            const response = await fetch('/api/admin/cleanup-inactive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dryRun: false })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showToast(`נמחקו ${data.deleted} משתמשים בהצלחה`, 'success');
+                setInactiveUsersWarning([]);
+                setShowInactiveUsersModal(false);
+                fetchStats();
+                fetchUsers();
+            } else {
+                showToast('שגיאה במחיקת משתמשים', 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting inactive users:', error);
+            showToast('שגיאה במחיקת משתמשים', 'error');
+        } finally {
+            setInactiveUsersLoading(false);
+        }
+    };
+
     // Notification Functions
     const fetchNotifications = async () => {
         try {
@@ -1881,6 +1935,49 @@ export default function AdminPage() {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Inactive Users Warning */}
+                            {inactiveUsersWarning.length > 0 && (
+                                <div className="admin-section" style={{ 
+                                    backgroundColor: '#fff3cd', 
+                                    borderRight: '4px solid #ffc107',
+                                    padding: '1rem',
+                                    marginBottom: '1.5rem'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', justifyContent: 'space-between' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1 }}>
+                                            <span style={{ fontSize: '2rem' }}>⚠️</span>
+                                            <div style={{ flex: 1 }}>
+                                                <h3 style={{ margin: 0, color: '#856404', fontSize: '1.1rem', fontWeight: 'bold' }}>
+                                                    אזהרה: משתמשים שיימחקו בחודש הבא
+                                                </h3>
+                                                <p style={{ margin: '0.5rem 0 0 0', color: '#856404' }}>
+                                                    {inactiveUsersWarning.length} משתמשים לא התחברו יותר מ-60 יום וימחקו אוטומטית ב-30 יום הקרובים
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowInactiveUsersModal(true)}
+                                                className="admin-btn-secondary"
+                                                style={{ whiteSpace: 'nowrap' }}
+                                            >
+                                                📋 הצג רשימה
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={deleteInactiveUsersNow}
+                                                disabled={inactiveUsersLoading}
+                                                className="admin-btn-danger"
+                                                style={{ whiteSpace: 'nowrap' }}
+                                            >
+                                                {inactiveUsersLoading ? '⏳ מוחק...' : '🗑️ מחק עכשיו'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Visitor Stats Details */}
                             <div className="admin-section">
@@ -3962,6 +4059,111 @@ export default function AdminPage() {
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Inactive Users Modal */}
+            {showInactiveUsersModal && (
+                <div className="admin-modal-overlay" onClick={() => setShowInactiveUsersModal(false)}>
+                    <div className="admin-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px' }}>
+                        <div className="admin-modal-header">
+                            <h3>⚠️ משתמשים שיימחקו בחודש הבא</h3>
+                            <button 
+                                className="admin-modal-close"
+                                onClick={() => setShowInactiveUsersModal(false)}
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        
+                        <div className="admin-modal-body" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                            <div style={{ 
+                                backgroundColor: '#fff3cd', 
+                                padding: '1rem', 
+                                marginBottom: '1rem',
+                                borderRadius: '4px',
+                                border: '1px solid #ffc107'
+                            }}>
+                                <p style={{ margin: 0, color: '#856404' }}>
+                                    <strong>המשתמשים הבאים לא התחברו יותר מ-60 יום</strong>
+                                </p>
+                                <p style={{ margin: '0.5rem 0 0 0', color: '#856404', fontSize: '0.9rem' }}>
+                                    הם יימחקו אוטומטית כאשר יעברו 90 יום ללא התחברות. ניתן למחוק אותם כבר עכשיו או להמתין למחיקה האוטומטית.
+                                </p>
+                            </div>
+
+                            {inactiveUsersWarning.length > 0 ? (
+                                <div className="admin-table-container">
+                                    <table className="admin-table">
+                                        <thead>
+                                            <tr>
+                                                <th>שם</th>
+                                                <th>אימייל</th>
+                                                <th>שם משתמש</th>
+                                                <th>התחברות אחרונה</th>
+                                                <th>ימים מאז</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {inactiveUsersWarning.map((user) => (
+                                                <tr key={user.id}>
+                                                    <td>{user.name}</td>
+                                                    <td>{user.email}</td>
+                                                    <td>{user.username || '-'}</td>
+                                                    <td>
+                                                        {user.lastLogin === 'Never' 
+                                                            ? 'אף פעם' 
+                                                            : new Date(user.lastLogin).toLocaleDateString('he-IL')}
+                                                    </td>
+                                                    <td>
+                                                        <span style={{ 
+                                                            backgroundColor: user.daysSinceLogin >= 75 ? '#dc3545' : '#ffc107',
+                                                            color: user.daysSinceLogin >= 75 ? 'white' : '#856404',
+                                                            padding: '0.25rem 0.5rem',
+                                                            borderRadius: '4px',
+                                                            fontSize: '0.85rem',
+                                                            fontWeight: 'bold'
+                                                        }}>
+                                                            {user.daysSinceLogin} ימים
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
+                                    <p>אין משתמשים לא פעילים</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="admin-modal-footer" style={{ 
+                            display: 'flex', 
+                            gap: '1rem', 
+                            justifyContent: 'flex-end',
+                            borderTop: '1px solid #dee2e6',
+                            paddingTop: '1rem',
+                            marginTop: '1rem'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={() => setShowInactiveUsersModal(false)}
+                                className="admin-btn-secondary"
+                            >
+                                סגור
+                            </button>
+                            <button
+                                type="button"
+                                onClick={deleteInactiveUsersNow}
+                                disabled={inactiveUsersLoading || inactiveUsersWarning.length === 0}
+                                className="admin-btn-danger"
+                            >
+                                {inactiveUsersLoading ? '⏳ מוחק...' : `🗑️ מחק ${inactiveUsersWarning.length} משתמשים עכשיו`}
+                            </button>
                         </div>
                     </div>
                 </div>
