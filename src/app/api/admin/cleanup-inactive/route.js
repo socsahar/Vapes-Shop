@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '../../../../../lib/supabase';
+import { supabaseAdmin } from '../../../../lib/supabase';
 
 const INACTIVE_DAYS = 90; // 3 months
 
