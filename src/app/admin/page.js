@@ -1755,6 +1755,8 @@ export default function AdminPage() {
             fetchRecentActivity(true); // Initial load with spinner
             // fetchShopSettings(); // Removed - shop settings now static
             fetchWhatsappUrl();
+            // Fetch list of users inactive for 60+ days for admin warning banner
+            fetchInactiveUsersWarning();
         } else if (activeTab === 'products') {
             fetchProducts();
         } else if (activeTab === 'orders') {
