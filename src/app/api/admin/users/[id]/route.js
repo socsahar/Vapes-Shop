@@ -137,7 +137,9 @@ export async function DELETE(request, { params }) {
             { name: 'cart_items', type: 'delete', field: 'user_id' },
             { name: 'password_reset_tokens', type: 'delete', field: 'user_id' },
             { name: 'user_logs', type: 'delete', field: 'user_id' },
-            { name: 'visitor_tracking', type: 'nullify', field: 'user_id' }
+            { name: 'visitor_tracking', type: 'nullify', field: 'user_id' },
+            { name: 'email_queue', type: 'delete', field: 'user_id' },
+            { name: 'email_logs', type: 'delete', field: 'user_id' }
         ];
 
         for (const operation of cleanupOperations) {

@@ -129,6 +129,16 @@ export async function POST(request) {
                     .update({ user_id: null })
                     .eq('user_id', user.id);
 
+                await supabaseAdmin
+                    .from('email_queue')
+                    .delete()
+                    .eq('user_id', user.id);
+
+                await supabaseAdmin
+                    .from('email_logs')
+                    .delete()
+                    .eq('user_id', user.id);
+
                 // Delete the user
                 const { error: deleteError } = await supabaseAdmin
                     .from('users')

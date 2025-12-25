@@ -254,6 +254,8 @@ async function cleanupInactiveUsers() {
       await supabase.from('password_reset_tokens').delete().eq('user_id', user.id);
       await supabase.from('user_logs').delete().eq('user_id', user.id);
       await supabase.from('visitor_tracking').update({ user_id: null }).eq('user_id', user.id);
+      await supabase.from('email_queue').delete().eq('user_id', user.id);
+      await supabase.from('email_logs').delete().eq('user_id', user.id);
 
       // Delete the user
       const { error: deleteError } = await supabase
