@@ -485,27 +485,31 @@ export default function AdminPage() {
     };
 
     const handleDeleteUser = async (userId, userRole, userName) => {
-        if (!confirm(`האם אתה בטוח שברצונך למחוק את המשתמש "${userName}"? פעולה זו אינה ניתנת לביטול!`)) {
-            return;
-        }
+        showConfirmation(
+            '🗑️ מחיקת משתמש',
+            `האם אתה בטוח שברצונך למחוק את המשתמש "${userName}"?\n\nפעולה זו אינה ניתנת לביטול!`,
+            async () => {
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}`, {
+                        method: 'DELETE'
+                    });
 
-        try {
-            const response = await fetch(`/api/admin/users/${userId}`, {
-                method: 'DELETE'
-            });
+                    const result = await response.json();
 
-            const result = await response.json();
-
-            if (response.ok) {
-                await fetchUsers(); // Refresh the users list
-                showToast('המשתמש נמחק בהצלחה!', 'success');
-            } else {
-                showToast(`שגיאה במחיקת המשתמש: ${result.error}`, 'error');
-            }
-        } catch (error) {
-            console.error('Error deleting user:', error);
-            showToast('שגיאה במחיקת המשתמש', 'error');
-        }
+                    if (response.ok) {
+                        await fetchUsers(); // Refresh the users list
+                        showToast('המשתמש נמחק בהצלחה!', 'success');
+                    } else {
+                        showToast(`שגיאה במחיקת המשתמש: ${result.error}`, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error deleting user:', error);
+                    showToast('שגיאה במחיקת המשתמש', 'error');
+                }
+            },
+            'מחק משתמש',
+            'bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-xl font-bold transition-all'
+        );
     };
 
     const handleViewUserOrders = async (user) => {
@@ -711,27 +715,31 @@ export default function AdminPage() {
     };
 
     const handleDeleteOrder = async (order) => {
-        if (!confirm(`❌ האם אתה בטוח שברצונך למחוק את ההזמנה של ${order.user?.full_name}?\n\nפעולה זו אינה ניתנת לביטול!`)) {
-            return;
-        }
+        showConfirmation(
+            '🗑️ מחיקת הזמנה',
+            `האם אתה בטוח שברצונך למחוק את ההזמנה של ${order.user?.full_name}?\n\nפעולה זו אינה ניתנת לביטול!`,
+            async () => {
+                try {
+                    const response = await fetch(`/api/admin/orders/${order.id}`, {
+                        method: 'DELETE',
+                        headers: await getAuthHeaders()
+                    });
 
-        try {
-            const response = await fetch(`/api/admin/orders/${order.id}`, {
-                method: 'DELETE',
-                headers: await getAuthHeaders()
-            });
-
-            if (response.ok) {
-                showToast('ההזמנה נמחקה בהצלחה! ✅', 'success');
-                fetchAllOrders();
-            } else {
-                const error = await response.json();
-                showToast(`שגיאה במחיקת ההזמנה: ${error.error}`, 'error');
-            }
-        } catch (error) {
-            console.error('Error deleting order:', error);
-            showToast('שגיאה במחיקת ההזמנה', 'error');
-        }
+                    if (response.ok) {
+                        showToast('ההזמנה נמחקה בהצלחה! ✅', 'success');
+                        fetchAllOrders();
+                    } else {
+                        const error = await response.json();
+                        showToast(`שגיאה במחיקת ההזמנה: ${error.error}`, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error deleting order:', error);
+                    showToast('שגיאה במחיקת ההזמנה', 'error');
+                }
+            },
+            'מחק הזמנה',
+            'bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-xl font-bold transition-all'
+        );
     };
 
     // PDF Generation Functions
@@ -830,83 +838,87 @@ export default function AdminPage() {
     };
 
     const handleSendSummaryEmail = async (order) => {
-        if (!confirm(`האם אתה בטוח שברצונך לשלוח אימייל סיכום למנהלים עבור הזמנה: "${order.title}"?\n\nהאימייל יכלול את שני הדוחות PDF (מנהל וספק).`)) {
-            return;
-        }
-
-        try {
-            setSummaryEmailLoading(order.id);
-            setEmailProgress({ current: 0, total: 0, percentage: 0 });
-            
-            // First, let's get the number of admins to show proper progress
-            const adminResponse = await fetch('/api/admin/users');
-            let totalAdmins = 1; // default fallback
-            if (adminResponse.ok) {
-                const adminData = await adminResponse.json();
-                const admins = adminData.users?.filter(user => user.role === 'admin') || [];
-                totalAdmins = Math.max(1, admins.length);
-            }
-
-            // Set initial progress
-            setEmailProgress({ current: 0, total: totalAdmins, percentage: 0 });
-
-            // Simulate progress during PDF generation (first 30%)
-            let currentProgress = 0;
-            const progressInterval = setInterval(() => {
-                if (currentProgress < 30) {
-                    currentProgress += 2;
-                    setEmailProgress(prev => ({ 
-                        ...prev, 
-                        percentage: currentProgress 
-                    }));
-                }
-            }, 100);
-
-            const response = await fetch('/api/admin/send-summary-email', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    orderId: order.id
-                })
-            });
-
-            clearInterval(progressInterval);
-
-            const result = await response.json();
-
-            if (response.ok) {
-                // Show completion progress with real numbers
-                const finalProgress = {
-                    current: result.recipients || 0,
-                    total: result.totalAdmins || totalAdmins,
-                    percentage: result.totalAdmins > 0 ? Math.round(((result.recipients || 0) / result.totalAdmins) * 100) : 100
-                };
-                
-                setEmailProgress(finalProgress);
-                
-                // Keep progress visible for 3 seconds before clearing
-                setTimeout(() => {
+        showConfirmation(
+            '📧 שליחת אימייל סיכום',
+            `האם אתה בטוח שברצונך לשלוח אימייל סיכום למנהלים עבור הזמנה: "${order.title}"?\n\nהאימייל יכלול את שני הדוחות PDF (מנהל וספק).`,
+            async () => {
+                try {
+                    setSummaryEmailLoading(order.id);
                     setEmailProgress({ current: 0, total: 0, percentage: 0 });
-                }, 3000);
+                    
+                    // First, let's get the number of admins to show proper progress
+                    const adminResponse = await fetch('/api/admin/users');
+                    let totalAdmins = 1; // default fallback
+                    if (adminResponse.ok) {
+                        const adminData = await adminResponse.json();
+                        const admins = adminData.users?.filter(user => user.role === 'admin') || [];
+                        totalAdmins = Math.max(1, admins.length);
+                    }
 
-                if (result.failedSends && result.failedSends.length > 0) {
-                    showToast(`📧 אימיילים נשלחו ל-${result.recipients} מנהלים\n❌ ${result.failedSends.length} נכשלו: ${result.failedSends.map(f => f.name).join(', ')}`, 'warning');
-                } else {
-                    showToast(`✅ אימייל סיכום נשלח בהצלחה ל-${result.recipients} מנהלים!\n📎 כולל ${result.attachments} דוחות PDF`, 'success');
+                    // Set initial progress
+                    setEmailProgress({ current: 0, total: totalAdmins, percentage: 0 });
+
+                    // Simulate progress during PDF generation (first 30%)
+                    let currentProgress = 0;
+                    const progressInterval = setInterval(() => {
+                        if (currentProgress < 30) {
+                            currentProgress += 2;
+                            setEmailProgress(prev => ({ 
+                                ...prev, 
+                                percentage: currentProgress 
+                            }));
+                        }
+                    }, 100);
+
+                    const response = await fetch('/api/admin/send-summary-email', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            orderId: order.id
+                        })
+                    });
+
+                    clearInterval(progressInterval);
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        // Show completion progress with real numbers
+                        const finalProgress = {
+                            current: result.recipients || 0,
+                            total: result.totalAdmins || totalAdmins,
+                            percentage: result.totalAdmins > 0 ? Math.round(((result.recipients || 0) / result.totalAdmins) * 100) : 100
+                        };
+                        
+                        setEmailProgress(finalProgress);
+                        
+                        // Keep progress visible for 3 seconds before clearing
+                        setTimeout(() => {
+                            setEmailProgress({ current: 0, total: 0, percentage: 0 });
+                        }, 3000);
+
+                        if (result.failedSends && result.failedSends.length > 0) {
+                            showToast(`📧 אימיילים נשלחו ל-${result.recipients} מנהלים\n❌ ${result.failedSends.length} נכשלו: ${result.failedSends.map(f => f.name).join(', ')}`, 'warning');
+                        } else {
+                            showToast(`✅ אימייל סיכום נשלח בהצלחה ל-${result.recipients} מנהלים!\n📎 כולל ${result.attachments} דוחות PDF`, 'success');
+                        }
+                    } else {
+                        setEmailProgress({ current: 0, total: 0, percentage: 0 });
+                        showToast(`❌ שגיאה בשליחת אימייל הסיכום: ${result.error}`, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error sending summary email:', error);
+                    setEmailProgress({ current: 0, total: 0, percentage: 0 });
+                    showToast('❌ שגיאה בשליחת אימייל הסיכום', 'error');
+                } finally {
+                    setSummaryEmailLoading(null);
                 }
-            } else {
-                setEmailProgress({ current: 0, total: 0, percentage: 0 });
-                showToast(`❌ שגיאה בשליחת אימייל הסיכום: ${result.error}`, 'error');
-            }
-        } catch (error) {
-            console.error('Error sending summary email:', error);
-            setEmailProgress({ current: 0, total: 0, percentage: 0 });
-            showToast('❌ שגיאה בשליחת אימייל הסיכום', 'error');
-        } finally {
-            setSummaryEmailLoading(null);
-        }
+            },
+            'שלח אימייל',
+            'admin-btn-primary'
+        );
     };
 
     const handleCreateGeneralOrder = () => {
@@ -1038,30 +1050,34 @@ export default function AdminPage() {
     };
 
     const handleCloseGeneralOrder = async (orderId) => {
-        if (!confirm('האם אתה בטוח שברצונך לסגור את ההזמנה הקבוצתית?')) {
-            return;
-        }
+        showConfirmation(
+            '🔒 סגירת הזמנה קבוצתית',
+            'האם אתה בטוח שברצונך לסגור את ההזמנה הקבוצתית?\n\nלאחר הסגירה, משתמשים לא יוכלו להצטרף או לערוך הזמנות.',
+            async () => {
+                try {
+                    const response = await fetch(`/api/admin/general-orders/${orderId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ status: 'closed' })
+                    });
 
-        try {
-            const response = await fetch(`/api/admin/general-orders/${orderId}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ status: 'closed' })
-            });
-
-            if (response.ok) {
-                fetchGeneralOrders();
-                showToast('הזמנה קבוצתית נסגרה בהצלחה', 'success');
-            } else {
-                const result = await response.json();
-                showToast(result.error || 'שגיאה בסגירת הזמנה קבוצתית', 'error');
-            }
-        } catch (error) {
-            console.error('Error closing general order:', error);
-            showToast('שגיאה בסגירת הזמנה קבוצתית', 'error');
-        }
+                    if (response.ok) {
+                        fetchGeneralOrders();
+                        showToast('הזמנה קבוצתית נסגרה בהצלחה', 'success');
+                    } else {
+                        const result = await response.json();
+                        showToast(result.error || 'שגיאה בסגירת הזמנה קבוצתית', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error closing general order:', error);
+                    showToast('שגיאה בסגירת הזמנה קבוצתית', 'error');
+                }
+            },
+            'סגור הזמנה',
+            'admin-btn-primary'
+        );
     };
 
     const handleDeleteGeneralOrder = async (orderId) => {
@@ -1073,64 +1089,72 @@ export default function AdminPage() {
             ? `האם אתה בטוח שברצונך למחוק את ההזמנה הקבוצתית?\n\n⚠️ פעולה זו תמחק גם:\n• ${participantCount} הזמנות של משתמשים\n• את כל פריטי ההזמנות\n\nפעולה זו לא ניתנת לביטול!`
             : 'האם אתה בטוח שברצונך למחוק את ההזמנה הקבוצתית? פעולה זו לא ניתנת לביטול.';
 
-        if (!confirm(confirmMessage)) {
-            return;
-        }
+        showConfirmation(
+            '🗑️ מחיקת הזמנה קבוצתית',
+            confirmMessage,
+            async () => {
+                try {
+                    const response = await fetch(`/api/admin/general-orders/${orderId}`, {
+                        method: 'DELETE'
+                    });
 
-        try {
-            const response = await fetch(`/api/admin/general-orders/${orderId}`, {
-                method: 'DELETE'
-            });
+                    const result = await response.json();
 
-            const result = await response.json();
-
-            if (response.ok) {
-                fetchGeneralOrders();
-                const deletedCount = result.deletedOrders || 0;
-                if (deletedCount > 0) {
-                    showToast(`הזמנה קבוצתית נמחקה בהצלחה!\n${deletedCount} הזמנות קשורות נמחקו גם כן.`, 'success');
-                } else {
-                    alert('הזמנה קבוצתית נמחקה בהצלחה');
+                    if (response.ok) {
+                        fetchGeneralOrders();
+                        const deletedCount = result.deletedOrders || 0;
+                        if (deletedCount > 0) {
+                            showToast(`הזמנה קבוצתית נמחקה בהצלחה!\n${deletedCount} הזמנות קשורות נמחקו גם כן.`, 'success');
+                        } else {
+                            showToast('הזמנה קבוצתית נמחקה בהצלחה', 'success');
+                        }
+                    } else {
+                        showToast(result.error || 'שגיאה במחיקת הזמנה קבוצתית', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error deleting general order:', error);
+                    showToast('שגיאה במחיקת הזמנה קבוצתית', 'error');
                 }
-            } else {
-                alert(result.error || 'שגיאה במחיקת הזמנה קבוצתית');
-            }
-        } catch (error) {
-            console.error('Error deleting general order:', error);
-            alert('שגיאה במחיקת הזמנה קבוצתית');
-        }
+            },
+            'מחק הזמנה',
+            'bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-xl font-bold transition-all'
+        );
     };
 
     const handleAutoCloseOrders = async () => {
-        if (!confirm('האם אתה בטוח שברצונך לסגור את כל הזמנות הקבוצתיות שחרג תאריך הסגירה שלהן?')) {
-            return;
-        }
+        showConfirmation(
+            '🔒 סגירה אוטומטית',
+            'האם אתה בטוח שברצונך לסגור את כל הזמנות הקבוצתיות שחרג תאריך הסגירה שלהן?\n\nפעולה זו תסגור את כל ההזמנות הפעילות שעבר מועד הסגירה שלהן.',
+            async () => {
+                setAutoCloseLoading(true);
 
-        setAutoCloseLoading(true);
+                try {
+                    const response = await fetch('/api/admin/auto-close', {
+                        method: 'POST'
+                    });
 
-        try {
-            const response = await fetch('/api/admin/auto-close', {
-                method: 'POST'
-            });
+                    const result = await response.json();
 
-            const result = await response.json();
-
-            if (response.ok) {
-                fetchGeneralOrders(); // Refresh the orders list
-                if (result.closedOrders.length > 0) {
-                    alert(`${result.closedOrders.length} הזמנות קבוצתיות נסגרו אוטומטית`);
-                } else {
-                    alert('לא נמצאו הזמנות פגות תוקף לסגירה');
+                    if (response.ok) {
+                        fetchGeneralOrders(); // Refresh the orders list
+                        if (result.closedOrders.length > 0) {
+                            showToast(`${result.closedOrders.length} הזמנות קבוצתיות נסגרו אוטומטית`, 'success');
+                        } else {
+                            showToast('לא נמצאו הזמנות פגות תוקף לסגירה', 'info');
+                        }
+                    } else {
+                        showToast(result.error || 'שגיאה בסגירה אוטומטית', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error in auto-close:', error);
+                    showToast('שגיאה בסגירה אוטומטית', 'error');
+                } finally {
+                    setAutoCloseLoading(false);
                 }
-            } else {
-                alert(result.error || 'שגיאה בסגירה אוטומטית');
-            }
-        } catch (error) {
-            console.error('Error in auto-close:', error);
-            alert('שגיאה בסגירה אוטומטית');
-        } finally {
-            setAutoCloseLoading(false);
-        }
+            },
+            'סגור הזמנות',
+            'admin-btn-primary'
+        );
     };
 
     const handleTestOrderEmail = async () => {
@@ -1362,35 +1386,39 @@ export default function AdminPage() {
     };
 
     const deleteInactiveUsersNow = async () => {
-        if (!confirm('האם אתה בטוח שברצונך למחוק את כל המשתמשים הלא פעילים עכשיו?')) {
-            return;
-        }
-
-        try {
-            setInactiveUsersLoading(true);
-            const response = await fetch('/api/admin/cleanup-inactive', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dryRun: false })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                showToast(`נמחקו ${data.deleted} משתמשים בהצלחה`, 'success');
-                setInactiveUsersWarning([]);
-                setShowInactiveUsersModal(false);
-                fetchStats();
-                fetchUsers();
-            } else {
-                showToast('שגיאה במחיקת משתמשים', 'error');
-            }
-        } catch (error) {
-            console.error('Error deleting inactive users:', error);
-            showToast('שגיאה במחיקת משתמשים', 'error');
-        } finally {
-            setInactiveUsersLoading(false);
-        }
+        showConfirmation(
+            '🗑️ מחיקת משתמשים לא פעילים',
+            `האם אתה בטוח שברצונך למחוק את כל המשתמשים הלא פעילים עכשיו?\n\n⚠️ יימחקו ${inactiveUsersWarning.length} משתמשים שלא התחברו למעלה מ-90 יום.\n\nפעולה זו אינה ניתנת לביטול!`,
+            async () => {
+                try {
+                    setInactiveUsersLoading(true);
+                    const response = await fetch('/api/admin/cleanup-inactive', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ dryRun: false })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        showToast(`נמחקו ${data.deleted} משתמשים בהצלחה`, 'success');
+                        setInactiveUsersWarning([]);
+                        setShowInactiveUsersModal(false);
+                        fetchStats();
+                        fetchUsers();
+                    } else {
+                        showToast('שגיאה במחיקת משתמשים', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error deleting inactive users:', error);
+                    showToast('שגיאה במחיקת משתמשים', 'error');
+                } finally {
+                    setInactiveUsersLoading(false);
+                }
+            },
+            'מחק משתמשים',
+            'bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-xl font-bold transition-all'
+        );
     };
 
     // Notification Functions
@@ -1657,26 +1685,30 @@ export default function AdminPage() {
     };
 
     const handleDeleteNotification = async (notificationId) => {
-        if (!confirm('האם אתה בטוח שברצונך למחוק את ההתראה?')) {
-            return;
-        }
+        showConfirmation(
+            '🗑️ מחיקת התראה',
+            'האם אתה בטוח שברצונך למחוק את ההתראה?\n\nפעולה זו אינה ניתנת לביטול.',
+            async () => {
+                try {
+                    const response = await fetch(`/api/admin/notifications?id=${notificationId}`, {
+                        method: 'DELETE'
+                    });
 
-        try {
-            const response = await fetch(`/api/admin/notifications?id=${notificationId}`, {
-                method: 'DELETE'
-            });
-
-            if (response.ok) {
-                fetchNotifications();
-                showToast('התראה נמחקה בהצלחה!', 'success');
-            } else {
-                const result = await response.json();
-                showToast(`שגיאה במחיקת ההתראה: ${result.error}`, 'error');
-            }
-        } catch (error) {
-            console.error('Error deleting notification:', error);
-            showToast('שגיאה במחיקת ההתראה', 'error');
-        }
+                    if (response.ok) {
+                        fetchNotifications();
+                        showToast('התראה נמחקה בהצלחה!', 'success');
+                    } else {
+                        const result = await response.json();
+                        showToast(`שגיאה במחיקת ההתראה: ${result.error}`, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error deleting notification:', error);
+                    showToast('שגיאה במחיקת ההתראה', 'error');
+                }
+            },
+            'מחק התראה',
+            'bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-xl font-bold transition-all'
+        );
     };
 
     const handleCloseNotificationModal = () => {
@@ -3762,7 +3794,7 @@ export default function AdminPage() {
                                         className="copy-btn"
                                         onClick={() => {
                                             navigator.clipboard.writeText(newPassword);
-                                            alert('הסיסמה הועתקה!');
+                                            showToast('הסיסמה הועתקה! 📋', 'success');
                                         }}
                                         title="העתק"
                                     >
