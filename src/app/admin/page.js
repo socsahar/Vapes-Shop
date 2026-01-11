@@ -1371,7 +1371,9 @@ export default function AdminPage() {
     // Inactive Users Warning Functions
     const fetchInactiveUsersWarning = async () => {
         try {
-            const response = await fetch('/api/admin/cleanup-inactive?days=60');
+            const response = await fetch('/api/admin/cleanup-inactive?days=60', {
+                cache: 'no-store'
+            });
             const data = await response.json();
             
             if (data.success && data.users && data.users.length > 0) {
@@ -1743,6 +1745,17 @@ export default function AdminPage() {
                 clearInterval(interval);
             }
         };
+    }, [activeTab]);
+
+    // Refresh inactive-users banner periodically to keep day counts accurate
+    useEffect(() => {
+        if (activeTab !== 'dashboard') return;
+
+        const interval = setInterval(() => {
+            fetchInactiveUsersWarning();
+        }, 60 * 60 * 1000); // Hourly refresh
+
+        return () => clearInterval(interval);
     }, [activeTab]);
 
     // Fetch data when tab changes (initial load only)
